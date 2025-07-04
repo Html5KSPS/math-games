@@ -173,7 +173,6 @@
     let numberDigits = [];
     const dropZone = { x: 50, y: 180, width: canvas.width - 100, height: 200 };
     const confirmButton = { x: canvas.width / 2 - 75, y: 540, width: 150, height: 50, text: '確定' };
-    // [FIX] 將下一題按鈕移到右下角
     const nextButton = { x: canvas.width - 180, y: 540, width: 150, height: 50, text: '下一題' };
     const restartButton = { x: canvas.width / 2 - 75, y: 540, width: 150, height: 50, text: '重新開始' };
     const replayButton = { x: canvas.width - 180, y: 110, width: 130, height: 45, text: '再聽一次' };
@@ -336,7 +335,7 @@
 
     function drawTopBar() {
         drawText(`得分: ${score}`, 50, 40, 24, '#03dac6', 'left');
-        const currentQ = (gameState === 'summary') ? totalQuestions : questionsAnswered + 1;
+        const currentQ = (gameState === 'summary') ? totalQuestions : questionsAnswered;
         drawText(`題目: ${Math.min(currentQ, totalQuestions)} / ${totalQuestions}`, canvas.width - 50, 40, 24, '#e0e0e0', 'right');
     }
 
@@ -377,7 +376,6 @@
              let feedbackText = `你排出的總額是 ${userAnswer}。完全正確！`;
              drawText(feedbackText, canvas.width / 2, dropZone.y + dropZone.height + 40, 24, '#2ecc71');
         } else {
-            // [FIX] 調整Y軸座標，避免文字重疊
             let userFeedback = `你排出的總額是 ${userAnswer}。`;
             drawText(userFeedback, canvas.width / 2, dropZone.y + dropZone.height + 30, 24, '#cf6679');
             drawText("正確的組合方式如下：", canvas.width / 2, 430, 20, '#e0e0e0');
@@ -396,7 +394,7 @@
                 for (let i = 0; i < count; i++) {
                     if (xPos + type.radius * 2 > canvas.width - 50) {
                         xPos = 50;
-                        yPos += 45; // 增加換行間距
+                        yPos += 45;
                     }
                     ctx.beginPath();
                     ctx.arc(xPos, yPos, type.radius, 0, Math.PI * 2);
@@ -523,6 +521,12 @@
         initAudioContext();
         totalQuestions = parseInt(document.getElementById('num-questions').value);
         settingsControls.style.display = 'none';
+        
+        // [FIX] 確保每次開始都重置遊戲狀態
+        score = 0;
+        questionsAnswered = 0;
+        results = [];
+
         newQuestion();
     });
     
