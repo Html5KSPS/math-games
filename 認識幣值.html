@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>位值與錢幣挑戰</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Sans GB', 'Microsoft JhengHei', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #121212;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+            -webkit-user-select: none; /* Safari */
+            -ms-user-select: none; /* IE 10+ */
+            user-select: none; /* Standard syntax */
+        }
+        #app-container {
+            width: 100%;
+            max-width: 800px;
+            background-color: #1e1e1e;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            border: 1px solid #333;
+        }
+        h1 {
+            color: #e0e0e0;
+            margin-bottom: 1.5rem;
+        }
+        canvas {
+            background-color: #2c2c2c;
+            border-radius: 12px;
+            border: 2px solid #444;
+            display: block;
+            margin: 0 auto 1.5rem auto;
+            width: 100%;
+            height: auto;
+            touch-action: none; /* 防止在 canvas 上拖曳時滾動頁面 */
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            align-items: center;
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+        }
+        .input-group label {
+            font-size: 1.1em;
+            color: #bb86fc;
+        }
+        .range-input {
+            width: 120px;
+            padding: 0.75rem;
+            font-size: 1.2em;
+            background-color: #333;
+            border: 2px solid #555;
+            color: #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(145deg, #6200ee, #3700b3);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+        /* 語音速度滑桿樣式 */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 180px;
+            height: 8px;
+            background: #555;
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.8;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            background: #03dac6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+            background: #03dac6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <h1>位值與錢幣挑戰</h1>
+    <canvas id="gameCanvas" width="750" height="600"></canvas>
+    
+    <div id="settings-controls" class="controls">
+        <div class="input-group">
+            <label for="min-num">數字範圍 從</label>
+            <input type="number" id="min-num" class="range-input" value="1" min="1" max="9998">
+            <label for="max-num">到</label>
+            <input type="number" id="max-num" class="range-input" value="9999" min="2" max="9999">
+        </div>
+        <div class="input-group">
+            <label for="num-questions">總題數</label>
+            <input type="number" id="num-questions" class="range-input" value="5" min="1" max="50">
+        </div>
+        <div class="input-group">
+            <label for="rate-slider">語音速度</label>
+            <input type="range" id="rate-slider" min="0.5" max="1.5" value="0.8" step="0.1">
+        </div>
+        <button id="start-btn">開始挑戰</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const settingsControls = document.getElementById('settings-controls');
+    const startBtn = document.getElementById('start-btn');
+    const rateSlider = document.getElementById('rate-slider');
+    
+    let gameState = 'welcome';
+    let score = 0, questionsAnswered = 0, totalQuestions = 5;
+    let currentNumber = 0;
+    let results = [];
+    let isDragging = false;
+    let draggedCoin = null;
+    let dragOffsetX, dragOffsetY;
+
+    const coinTypes = [
+        { value: 1000, color: '#ffb8b8', radius: 30 },
+        { value: 500,  color: '#ffd6a5', radius: 28 },
+        { value: 100,  color: '#c9ffb8', radius: 26 },
+        { value: 50,   color: '#b8fff8', radius: 24 },
+        { value: 10,   color: '#b8cfff', radius: 22 },
+        { value: 5,    color: '#d6b8ff', radius: 20 },
+        { value: 1,    color: '#ffb8f7', radius: 18 }
+    ];
+    let coins = [];
+    let droppedCoins = [];
+
+    let numberDigits = [];
+    const dropZone = { x: 50, y: 180, width: canvas.width - 100, height: 200 };
+    const confirmButton = { x: canvas.width / 2 - 75, y: 540, width: 150, height: 50, text: '確定' };
+    // [FIX] 將下一題按鈕移到右下角
+    const nextButton = { x: canvas.width - 180, y: 540, width: 150, height: 50, text: '下一題' };
+    const restartButton = { x: canvas.width / 2 - 75, y: 540, width: 150, height: 50, text: '重新開始' };
+    const replayButton = { x: canvas.width - 180, y: 110, width: 130, height: 45, text: '再聽一次' };
+
+    const synth = window.speechSynthesis;
+    let voices = [];
+    let audioCtx;
+
+    // --- 初始化與設定 ---
+    function initCoins() {
+        coins = [];
+        const yPos = 470;
+        const spacing = (canvas.width - 100) / (coinTypes.length - 1);
+        coinTypes.forEach((type, i) => {
+            coins.push({ ...type, x: 50 + i * spacing, y: yPos, originalX: 50 + i * spacing, originalY: yPos });
+        });
+    }
+
+    function initAudioContext() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function playSuccessSound() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.type = 'sine';
+        const now = audioCtx.currentTime;
+        const noteDuration = 0.08;
+        const baseFreq = 523.25;
+        gainNode.gain.setValueAtTime(0.2, now);
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.setValueAtTime(baseFreq * 5/4, now + noteDuration);
+        osc.frequency.setValueAtTime(baseFreq * 3/2, now + noteDuration * 2);
+        osc.frequency.setValueAtTime(baseFreq * 2, now + noteDuration * 3);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + noteDuration * 4);
+        osc.start(now);
+        osc.stop(now + noteDuration * 4.5);
+    }
+
+    function playFailSound() {
+        if (!audioCtx) return;
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(164, audioCtx.currentTime);
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(123, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc1.start(audioCtx.currentTime);
+        osc2.start(audioCtx.currentTime);
+        osc1.stop(audioCtx.currentTime + 0.4);
+        osc2.stop(audioCtx.currentTime + 0.4);
+    }
+
+    function speak(text) {
+        if (!synth) return;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-TW';
+        utterance.rate = parseFloat(rateSlider.value);
+        const preferredVoice = voices.find(v => v.lang === 'zh-TW') || voices.find(v => v.lang.startsWith('zh-'));
+        if (preferredVoice) utterance.voice = preferredVoice;
+        utterance.onerror = e => { if (e.error !== 'interrupted') console.error(`語音錯誤: ${e.error}`); };
+        if (synth.speaking) synth.cancel();
+        setTimeout(() => synth.speak(utterance), 100);
+    }
+
+    function populateVoiceList() {
+        if (typeof synth === 'undefined') return;
+        voices = synth.getVoices().filter(voice => voice.lang.includes('zh'));
+        if (voices.length > 0 && synth.onvoiceschanged !== undefined) synth.onvoiceschanged = null;
+    }
+    populateVoiceList();
+    if (typeof synth !== 'undefined' && synth.onvoiceschanged !== undefined) synth.onvoiceschanged = populateVoiceList;
+
+    // --- 遊戲流程 ---
+    function newQuestion() {
+        if (questionsAnswered >= totalQuestions) {
+            gameState = 'summary';
+            draw();
+            return;
+        }
+        const min = parseInt(document.getElementById('min-num').value);
+        const max = parseInt(document.getElementById('max-num').value);
+        currentNumber = Math.floor(Math.random() * (max - min + 1)) + min;
+        
+        droppedCoins = [];
+        initCoins();
+        generateDigitRects();
+        
+        gameState = 'playing';
+        draw();
+        speak(currentNumber);
+    }
+
+    function checkAnswer() {
+        gameState = 'feedback';
+        const userAnswer = droppedCoins.reduce((sum, coin) => sum + coin.value, 0);
+        const isCorrect = userAnswer === currentNumber;
+        
+        results.push({
+            question: currentNumber,
+            answer: userAnswer,
+            correct: isCorrect
+        });
+
+        if (isCorrect) {
+            playSuccessSound();
+            score++;
+        } else {
+            playFailSound();
+            setTimeout(() => {
+                speak(`你排出的總額是 ${userAnswer}`);
+            }, 500);
+        }
+        
+        questionsAnswered++;
+        draw();
+    }
+
+    function resetGame() {
+        gameState = 'welcome';
+        settingsControls.style.display = 'flex';
+        draw();
+    }
+
+    // --- 繪圖函式 ---
+    function draw() {
+        ctx.fillStyle = '#2c2c2c';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (gameState === 'welcome') {
+            drawText('歡迎挑戰位值與錢幣！', canvas.width / 2, 200, 40, '#e0e0e0');
+        } else if (gameState === 'playing' || gameState === 'feedback' || gameState === 'summary') {
+            drawTopBar();
+            if (gameState === 'summary') {
+                drawSummary();
+            } else {
+                drawQuestionNumber();
+                drawDropZone();
+                drawCoins();
+                if (gameState === 'feedback') {
+                    drawFeedback();
+                } else {
+                    drawButton(confirmButton, '#03dac6');
+                    drawButton(replayButton, '#28a745');
+                }
+            }
+        }
+    }
+
+    function drawTopBar() {
+        drawText(`得分: ${score}`, 50, 40, 24, '#03dac6', 'left');
+        const currentQ = (gameState === 'summary') ? totalQuestions : questionsAnswered + 1;
+        drawText(`題目: ${Math.min(currentQ, totalQuestions)} / ${totalQuestions}`, canvas.width - 50, 40, 24, '#e0e0e0', 'right');
+    }
+
+    function drawQuestionNumber() {
+        ctx.font = `bold 80px 'Arial'`;
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText(currentNumber, canvas.width / 2, 140);
+    }
+
+    function drawDropZone() {
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(dropZone.x, dropZone.y, dropZone.width, dropZone.height);
+        ctx.setLineDash([]);
+        if (droppedCoins.length === 0 && gameState === 'playing') {
+            drawText('請將下方的錢幣拖曳到這裡', canvas.width / 2, dropZone.y + dropZone.height / 2, 20, '#777');
+        }
+    }
+
+    function drawCoins() {
+        const coinsToDraw = gameState === 'feedback' ? [] : coins;
+        [...coinsToDraw, ...droppedCoins].forEach(coin => {
+            ctx.beginPath();
+            ctx.arc(coin.x, coin.y, coin.radius, 0, Math.PI * 2);
+            ctx.fillStyle = coin.color;
+            ctx.fill();
+            drawText(coin.value, coin.x, coin.y + 8, coin.radius * 0.7, '#000');
+        });
+    }
+
+    function drawFeedback() {
+        const userAnswer = results[results.length - 1].answer;
+        const isCorrect = results[results.length - 1].correct;
+
+        if (isCorrect) {
+             let feedbackText = `你排出的總額是 ${userAnswer}。完全正確！`;
+             drawText(feedbackText, canvas.width / 2, dropZone.y + dropZone.height + 40, 24, '#2ecc71');
+        } else {
+            // [FIX] 調整Y軸座標，避免文字重疊
+            let userFeedback = `你排出的總額是 ${userAnswer}。`;
+            drawText(userFeedback, canvas.width / 2, dropZone.y + dropZone.height + 30, 24, '#cf6679');
+            drawText("正確的組合方式如下：", canvas.width / 2, 430, 20, '#e0e0e0');
+            drawCorrectCombination();
+        }
+        drawButton(nextButton, '#00796b');
+    }
+    
+    function drawCorrectCombination() {
+        let amount = currentNumber;
+        let xPos = 50;
+        let yPos = 470;
+        coinTypes.forEach(type => {
+            const count = Math.floor(amount / type.value);
+            if (count > 0) {
+                for (let i = 0; i < count; i++) {
+                    if (xPos + type.radius * 2 > canvas.width - 50) {
+                        xPos = 50;
+                        yPos += 45; // 增加換行間距
+                    }
+                    ctx.beginPath();
+                    ctx.arc(xPos, yPos, type.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = type.color;
+                    ctx.fill();
+                    drawText(type.value, xPos, yPos + 6, type.radius * 0.7, '#000');
+                    xPos += type.radius * 2 + 5;
+                }
+                amount %= type.value;
+            }
+        });
+    }
+
+    function drawSummary() {
+        drawText('測驗結果分析', canvas.width / 2, 100, 32, '#e0e0e0');
+        let yPos = 150;
+        results.forEach((r, i) => {
+            const color = r.correct ? '#2ecc71' : '#cf6679';
+            const text = `第 ${i+1} 題 (${r.question}): 你排出 ${r.answer}。`;
+            drawText(text, canvas.width / 2, yPos, 20, color);
+            yPos += 30;
+        });
+        drawButton(restartButton, '#6200ee');
+    }
+
+    function drawButton(btn, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(btn.x, btn.y, btn.width, btn.height);
+        drawText(btn.text, btn.x + btn.width / 2, btn.y + btn.height / 2 + 8, 20, '#fff');
+    }
+
+    function drawText(text, x, y, size, color, align = 'center') {
+        ctx.font = `bold ${size}px 'Microsoft JhengHei', sans-serif`;
+        ctx.fillStyle = color;
+        ctx.textAlign = align;
+        ctx.fillText(text, x, y);
+    }
+
+    // --- 互動邏輯 ---
+    function generateDigitRects() {
+        numberDigits = [];
+        const numStr = currentNumber.toString();
+        const totalWidth = numStr.length * 60;
+        let startX = canvas.width / 2 - totalWidth / 2;
+        for (let i = 0; i < numStr.length; i++) {
+            const digit = numStr[i];
+            const value = parseInt(digit) * Math.pow(10, numStr.length - 1 - i);
+            numberDigits.push({
+                digit,
+                value,
+                rect: { x: startX, y: 80, width: 60, height: 80 }
+            });
+            startX += 60;
+        }
+    }
+
+    function getMousePos(evt) {
+        const rect = canvas.getBoundingClientRect();
+        return {
+            x: (evt.clientX - rect.left) * (canvas.width / rect.width),
+            y: (evt.clientY - rect.top) * (canvas.height / rect.height)
+        };
+    }
+
+    function handleMouseDown(e) {
+        e.preventDefault();
+        initAudioContext();
+        const pos = getMousePos(e.touches ? e.touches[0] : e);
+
+        if (gameState === 'playing') {
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const coin = coins[i];
+                const dist = Math.hypot(pos.x - coin.x, pos.y - coin.y);
+                if (dist < coin.radius) {
+                    isDragging = true;
+                    draggedCoin = coin;
+                    dragOffsetX = pos.x - coin.x;
+                    dragOffsetY = pos.y - coin.y;
+                    return;
+                }
+            }
+            numberDigits.forEach(d => {
+                if (isInside(pos, d.rect)) {
+                    speak(d.value);
+                }
+            });
+            if (isInside(pos, confirmButton)) checkAnswer();
+            if (isInside(pos, replayButton)) speak(currentNumber);
+        } else if (gameState === 'feedback') {
+            if (isInside(pos, nextButton)) newQuestion();
+        } else if (gameState === 'summary') {
+            if (isInside(pos, restartButton)) resetGame();
+        }
+    }
+
+    function handleMouseMove(e) {
+        if (!isDragging) return;
+        e.preventDefault();
+        const pos = getMousePos(e.touches ? e.touches[0] : e);
+        draggedCoin.x = pos.x - dragOffsetX;
+        draggedCoin.y = pos.y - dragOffsetY;
+        draw();
+    }
+
+    function handleMouseUp() {
+        if (isDragging) {
+            if (isInside(draggedCoin, dropZone)) {
+                droppedCoins.push({ ...draggedCoin });
+            }
+            draggedCoin.x = draggedCoin.originalX;
+            draggedCoin.y = draggedCoin.originalY;
+            isDragging = false;
+            draggedCoin = null;
+            draw();
+        }
+    }
+    
+    function isInside(pos, rect) {
+        return pos.x > rect.x && pos.x < rect.x + rect.width && pos.y > rect.y && pos.y < rect.y + rect.height;
+    }
+
+    // --- 事件監聽 ---
+    startBtn.addEventListener('click', () => {
+        initAudioContext();
+        totalQuestions = parseInt(document.getElementById('num-questions').value);
+        settingsControls.style.display = 'none';
+        newQuestion();
+    });
+    
+    canvas.addEventListener('mousedown', handleMouseDown);
+    canvas.addEventListener('mousemove', handleMouseMove);
+    canvas.addEventListener('mouseup', handleMouseUp);
+    canvas.addEventListener('touchstart', handleMouseDown);
+    canvas.addEventListener('touchmove', handleMouseMove);
+    canvas.addEventListener('touchend', handleMouseUp);
+
+    window.onload = () => {
+        resetGame();
+    };
+</script>
+
+</body>
+</html>
