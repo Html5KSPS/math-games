@@ -358,14 +358,33 @@
     }
 
     function drawCoins() {
-        const coinsToDraw = gameState === 'feedback' ? [] : coins;
-        [...coinsToDraw, ...droppedCoins].forEach(coin => {
+        // [FIX] 繪圖邏輯簡化，並確保拖曳中的錢幣在最上層
+        // 1. 繪製錢幣庫
+        coins.forEach(coin => {
             ctx.beginPath();
             ctx.arc(coin.x, coin.y, coin.radius, 0, Math.PI * 2);
             ctx.fillStyle = coin.color;
             ctx.fill();
             drawText(coin.value, coin.x, coin.y + 8, coin.radius * 0.7, '#000');
         });
+        // 2. 繪製已放置的錢幣
+        droppedCoins.forEach(coin => {
+            ctx.beginPath();
+            ctx.arc(coin.x, coin.y, coin.radius, 0, Math.PI * 2);
+            ctx.fillStyle = coin.color;
+            ctx.fill();
+            drawText(coin.value, coin.x, coin.y + 8, coin.radius * 0.7, '#000');
+        });
+        // 3. 繪製正在拖曳的錢幣
+        if (isDragging && draggedCoin) {
+            ctx.beginPath();
+            ctx.arc(draggedCoin.x, draggedCoin.y, draggedCoin.radius, 0, Math.PI * 2);
+            ctx.fillStyle = draggedCoin.color;
+            ctx.globalAlpha = 0.7; // 讓拖曳中的錢幣有點半透明
+            ctx.fill();
+            ctx.globalAlpha = 1.0;
+            drawText(draggedCoin.value, draggedCoin.x, draggedCoin.y + 8, draggedCoin.radius * 0.7, '#000');
+        }
     }
 
     function drawFeedback() {
@@ -465,17 +484,37 @@
         const pos = getMousePos(e.touches ? e.touches[0] : e);
 
         if (gameState === 'playing') {
+            // [FIX] 優先檢查是否要拖曳已放置的錢幣
+            for (let i = droppedCoins.length - 1; i >= 0; i--) {
+                const coin = droppedCoins[i];
+                const dist = Math.hypot(pos.x - coin.x, pos.y - coin.y);
+                if (dist < coin.radius) {
+                    isDragging = true;
+                    draggedCoin = droppedCoins.splice(i, 1)[0]; // 從放置區取出
+                    dragOffsetX = pos.x - draggedCoin.x;
+                    dragOffsetY = pos.y - draggedCoin.y;
+                    draw();
+                    return;
+                }
+            }
+
+            // 若無，再檢查是否要從錢幣庫拖曳新錢幣
             for (let i = coins.length - 1; i >= 0; i--) {
                 const coin = coins[i];
                 const dist = Math.hypot(pos.x - coin.x, pos.y - coin.y);
                 if (dist < coin.radius) {
                     isDragging = true;
-                    draggedCoin = coin;
-                    dragOffsetX = pos.x - coin.x;
-                    dragOffsetY = pos.y - coin.y;
+                    draggedCoin = { ...coin }; // 複製一個新的錢幣來拖曳
+                    dragOffsetX = pos.x - draggedCoin.x;
+                    dragOffsetY = pos.y - draggedCoin.y;
+                    // 立刻更新位置到滑鼠點擊處
+                    draggedCoin.x = pos.x - dragOffsetX;
+                    draggedCoin.y = pos.y - dragOffsetY;
+                    draw();
                     return;
                 }
             }
+
             numberDigits.forEach(d => {
                 if (isInside(pos, d.rect)) {
                     speak(d.value);
@@ -501,11 +540,12 @@
 
     function handleMouseUp() {
         if (isDragging) {
+            // [FIX] 放開滑鼠時，檢查是否在放置區內
             if (isInside(draggedCoin, dropZone)) {
-                droppedCoins.push({ ...draggedCoin });
+                droppedCoins.push(draggedCoin); // 放回或放入放置區
             }
-            draggedCoin.x = draggedCoin.originalX;
-            draggedCoin.y = draggedCoin.originalY;
+            // 如果不在放置區內，錢幣就會因為沒有被放回去而消失 (被刪除)
+            
             isDragging = false;
             draggedCoin = null;
             draw();
@@ -522,7 +562,6 @@
         totalQuestions = parseInt(document.getElementById('num-questions').value);
         settingsControls.style.display = 'none';
         
-        // [FIX] 確保每次開始都重置遊戲狀態
         score = 0;
         questionsAnswered = 0;
         results = [];
