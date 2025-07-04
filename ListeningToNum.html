@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聽音辨數</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Sans GB', 'Microsoft JhengHei', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #121212;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        #app-container {
+            width: 100%;
+            max-width: 600px;
+            background-color: #1e1e1e;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            border: 1px solid #333;
+        }
+        h1 {
+            color: #e0e0e0;
+            margin-bottom: 1.5rem;
+        }
+        canvas {
+            background-color: #2c2c2c;
+            border-radius: 12px;
+            border: 2px solid #444;
+            display: block;
+            margin: 0 auto 1.5rem auto;
+            width: 100%;
+            height: auto;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            align-items: center;
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .input-group label {
+            font-size: 1.1em;
+            color: #bb86fc;
+        }
+        .input-group label[for="rate-slider"], .input-group label[for="num-questions"] {
+            color: #03dac6;
+        }
+        .range-input, #user-answer {
+            width: 120px;
+            padding: 0.75rem;
+            font-size: 1.2em;
+            background-color: #333;
+            border: 2px solid #555;
+            color: #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .range-input:focus, #user-answer:focus {
+            border-color: #bb86fc;
+            box-shadow: 0 0 8px rgba(187, 134, 252, 0.5);
+            outline: none;
+        }
+        #user-answer {
+            width: 80%;
+            max-width: 300px;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(145deg, #6200ee, #3700b3);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        /* 讓禁用按鈕有明顯樣式 */
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        #next-q-btn {
+            background: linear-gradient(145deg, #00796b, #004d40);
+        }
+        #game-controls {
+            display: none;
+        }
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 180px;
+            height: 8px;
+            background: #555;
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.8;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 22px;
+            height: 22px;
+            background: #03dac6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 22px;
+            height: 22px;
+            background: #03dac6;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <h1>聽音辨數</h1>
+    <canvas id="gameCanvas" width="550" height="400"></canvas>
+    
+    <div id="settings-controls" class="controls">
+        <div class="input-group">
+            <label for="min-range">從</label>
+            <input type="number" id="min-range" class="range-input" value="1" min="1" max="99998">
+            <label for="max-range">到</label>
+            <input type="number" id="max-range" class="range-input" value="100" min="2" max="99999">
+        </div>
+        <div class="input-group">
+            <label for="num-questions">總題數：</label>
+            <input type="number" id="num-questions" class="range-input" value="10" min="1" max="50">
+        </div>
+        <div class="input-group">
+            <label for="rate-slider">語音速度：</label>
+            <input type="range" id="rate-slider" min="0.5" max="1.5" value="0.9" step="0.1">
+        </div>
+        <button id="start-btn">開始挑戰</button>
+    </div>
+
+    <div id="game-controls" class="controls">
+        <input type="number" id="user-answer" placeholder="在這裡輸入答案...">
+        <button id="submit-btn">送出答案</button>
+        <button id="next-q-btn" style="display: none;">下一題</button>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const settingsControls = document.getElementById('settings-controls');
+    const gameControls = document.getElementById('game-controls');
+    const startBtn = document.getElementById('start-btn');
+    const submitBtn = document.getElementById('submit-btn');
+    const minRangeInput = document.getElementById('min-range');
+    const maxRangeInput = document.getElementById('max-range');
+    const userAnswerInput = document.getElementById('user-answer');
+    const rateSlider = document.getElementById('rate-slider');
+    const nextQBtn = document.getElementById('next-q-btn');
+    const numQuestionsInput = document.getElementById('num-questions');
+
+    let gameState = 'welcome';
+    let currentNumber = 0;
+    let score = 0;
+    let minRange, maxRange;
+    let feedbackMessage = '', feedbackColor = '';
+    let totalQuestions = 10, questionsAnswered = 0;
+    let results = [];
+    let isChecking = false; // [FIX] 防止重複提交的旗標
+    
+    const replayButton = { x: 200, y: 120, width: 150, height: 50, text: '🔊 重聽一次' };
+    const restartButton = { x: 200, y: 340, width: 150, height: 50, text: '🔄 重新開始' };
+
+    const synth = window.speechSynthesis;
+    let voices = [];
+    let audioCtx; // Web Audio API Context
+
+    // --- 音效產生函式 ---
+    function initAudioContext() {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    function playSuccessSound() {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.type = 'sine';
+        const now = audioCtx.currentTime;
+        const noteDuration = 0.08;
+        const baseFreq = 523.25; // C5
+        gainNode.gain.setValueAtTime(0.2, now);
+        osc.frequency.setValueAtTime(baseFreq, now);
+        osc.frequency.setValueAtTime(baseFreq * 5/4, now + noteDuration);
+        osc.frequency.setValueAtTime(baseFreq * 3/2, now + noteDuration * 2);
+        osc.frequency.setValueAtTime(baseFreq * 2, now + noteDuration * 3);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + noteDuration * 4);
+        osc.start(now);
+        osc.stop(now + noteDuration * 4.5);
+    }
+
+    function playFailSound() {
+        if (!audioCtx) return;
+        const osc1 = audioCtx.createOscillator();
+        const osc2 = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc1.type = 'triangle';
+        osc1.frequency.setValueAtTime(164, audioCtx.currentTime);
+        osc2.type = 'triangle';
+        osc2.frequency.setValueAtTime(123, audioCtx.currentTime);
+        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc1.start(audioCtx.currentTime);
+        osc2.start(audioCtx.currentTime);
+        osc1.stop(audioCtx.currentTime + 0.4);
+        osc2.stop(audioCtx.currentTime + 0.4);
+    }
+
+    // --- 語音合成函式 ---
+    function populateVoiceList() {
+        if (typeof synth === 'undefined') return;
+        voices = synth.getVoices().filter(voice => voice.lang.includes('zh'));
+        if (voices.length > 0 && synth.onvoiceschanged !== undefined) {
+            synth.onvoiceschanged = null;
+        }
+    }
+    
+    populateVoiceList();
+    if (typeof synth !== 'undefined' && synth.onvoiceschanged !== undefined) {
+        synth.onvoiceschanged = populateVoiceList;
+    }
+
+    function speak(text, lang = 'zh-TW') {
+        if (!synth) return;
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = lang;
+        utterance.rate = parseFloat(rateSlider.value);
+        
+        const preferredVoices = [
+            voices.find(voice => voice.lang === 'zh-TW'),
+            voices.find(voice => voice.lang === 'zh-CN'),
+            voices.find(voice => voice.lang.startsWith('zh-'))
+        ].filter(Boolean);
+
+        if (preferredVoices.length > 0) {
+            utterance.voice = preferredVoices[0];
+        }
+
+        utterance.onerror = (event) => {
+            if (event.error !== 'interrupted') {
+                console.error(`SpeechSynthesisUtterance 發生錯誤: ${event.error}`);
+            }
+        };
+
+        if (synth.speaking) synth.cancel();
+        setTimeout(() => synth.speak(utterance), 100);
+    }
+
+    // --- Canvas 繪圖函式 ---
+    function drawText(text, x, y, size = 20, color = '#ffffff', align = 'center') {
+        ctx.font = `bold ${size}px 'Microsoft JhengHei', sans-serif`;
+        ctx.fillStyle = color;
+        ctx.textAlign = align;
+        ctx.fillText(text, x, y);
+    }
+
+    function drawButton(x, y, w, h, color, text) {
+        ctx.fillStyle = color;
+        ctx.shadowColor = 'rgba(0,0,0,0.4)';
+        ctx.shadowBlur = 5;
+        ctx.shadowOffsetY = 3;
+        ctx.fillRect(x, y, w, h);
+        ctx.shadowColor = 'transparent';
+        drawText(text, x + w / 2, y + h / 2 + 8, 20, '#000000');
+    }
+    
+    function draw() {
+        ctx.fillStyle = '#2c2c2c';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (gameState === 'welcome') {
+            drawText('歡迎來到聽音辨數挑戰！', canvas.width / 2, 100, 32, '#e0e0e0');
+            drawText('請在下方設定遊戲參數', canvas.width / 2, 180, 24, '#a0a0ff');
+        } else if (gameState === 'playing' || gameState === 'feedback') {
+            drawText(`得分: ${score}`, 80, 50, 28, '#03dac6', 'left');
+            drawText(`題目: ${Math.min(questionsAnswered + 1, totalQuestions)} / ${totalQuestions}`, canvas.width - 80, 50, 28, '#e0e0e0', 'right');
+            drawText('請聽題目...', canvas.width / 2, 100, 28, '#e0e0e0');
+            drawButton(replayButton.x, replayButton.y, replayButton.width, replayButton.height, '#03dac6', replayButton.text);
+            if (gameState === 'feedback') {
+                drawText(feedbackMessage, canvas.width / 2, 230, 30, feedbackColor);
+            }
+        } else if (gameState === 'summary') {
+            drawSummary();
+        }
+    }
+
+    function drawSummary() {
+        drawText('測驗結果分析', canvas.width / 2, 40, 32, '#e0e0e0');
+        drawText(`最終得分: ${score} / ${totalQuestions}`, canvas.width / 2, 80, 24, '#03dac6');
+        
+        const correctAnswers = results.filter(r => r.correct);
+        const incorrectAnswers = results.filter(r => !r.correct);
+
+        drawText('✔️ 答對的題目', 140, 120, 20, '#2ecc71', 'center');
+        ctx.textAlign = 'center';
+        ctx.font = "18px 'Microsoft JhengHei'";
+        ctx.fillStyle = '#e0e0e0';
+        correctAnswers.forEach((r, i) => ctx.fillText(r.question, 140, 150 + i * 25));
+
+        drawText('❌ 答錯的題目', 410, 120, 20, '#cf6679', 'center');
+        ctx.textAlign = 'left';
+        ctx.font = "16px 'Microsoft JhengHei'";
+        incorrectAnswers.forEach((r, i) => {
+            const text = `題: ${r.question}, 答: ${r.answer}`;
+            ctx.fillStyle = '#e0e0e0';
+            ctx.fillText(text, 320, 150 + i * 25);
+        });
+
+        drawButton(restartButton.x, restartButton.y, restartButton.width, restartButton.height, '#6200ee', restartButton.text);
+    }
+
+    // --- 遊戲流程控制 ---
+    function resetGame() {
+        gameState = 'welcome';
+        settingsControls.style.display = 'flex';
+        gameControls.style.display = 'none';
+        draw();
+    }
+
+    function generateNewQuestion() {
+        if (questionsAnswered >= totalQuestions) {
+            gameState = 'summary';
+            gameControls.style.display = 'none';
+            draw();
+            return;
+        }
+        currentNumber = Math.floor(Math.random() * (maxRange - minRange + 1)) + minRange;
+        
+        // [FIX] 為下一題重設控制項狀態
+        isChecking = false;
+        submitBtn.disabled = false;
+        userAnswerInput.disabled = false;
+        userAnswerInput.value = '';
+        userAnswerInput.style.display = 'block';
+        userAnswerInput.focus();
+        submitBtn.style.display = 'block';
+        nextQBtn.style.display = 'none';
+
+        gameState = 'playing';
+        draw();
+        speak(currentNumber);
+    }
+
+    function checkAnswer() {
+        // [FIX] 檢查旗標，如果正在檢查，則直接返回
+        if (isChecking) return;
+        isChecking = true; // 設定旗標，表示開始檢查答案
+        submitBtn.disabled = true;
+        userAnswerInput.disabled = true;
+
+        const userAnswer = parseInt(userAnswerInput.value);
+        const isCorrect = userAnswer === currentNumber;
+        
+        if (isNaN(userAnswer)) {
+            feedbackMessage = '請輸入有效的數字！';
+            feedbackColor = '#cf6679';
+            gameState = 'feedback';
+            draw();
+            // 2秒後重設狀態，讓使用者可以重新輸入
+            setTimeout(() => { 
+                if (gameState === 'feedback') {
+                    isChecking = false;
+                    submitBtn.disabled = false;
+                    userAnswerInput.disabled = false;
+                    gameState = 'playing'; 
+                    draw(); 
+                }
+            }, 2000);
+            return;
+        }
+
+        results.push({ question: currentNumber, answer: userAnswer, correct: isCorrect });
+        questionsAnswered++;
+        gameState = 'feedback';
+        
+        if (isCorrect) {
+            feedbackMessage = '🎉 答對了！ 🎉';
+            feedbackColor = '#03dac6';
+            score++;
+            draw();
+            playSuccessSound();
+            setTimeout(generateNewQuestion, 1500);
+        } else {
+            feedbackMessage = `${userAnswer} 答錯了... 正確答案是 ${currentNumber}`;
+            feedbackColor = '#cf6679';
+            draw();
+            playFailSound();
+            speak(`你輸入的數字是 ${userAnswer}，正確答案是 ${currentNumber}`);
+            
+            // 這裡不需要重設 isChecking，因為使用者必須點擊下一題
+            userAnswerInput.style.display = 'none';
+            submitBtn.style.display = 'none';
+            nextQBtn.style.display = 'block';
+        }
+    }
+
+    // --- 事件監聽 ---
+    startBtn.addEventListener('click', () => {
+        initAudioContext();
+        minRange = parseInt(minRangeInput.value);
+        maxRange = parseInt(maxRangeInput.value);
+        totalQuestions = parseInt(numQuestionsInput.value);
+
+        if (isNaN(minRange) || isNaN(maxRange) || minRange >= maxRange || isNaN(totalQuestions) || totalQuestions < 1) {
+            alert('請設定有效的數字範圍與總題數！');
+            return;
+        }
+
+        settingsControls.style.display = 'none';
+        gameControls.style.display = 'flex';
+        
+        score = 0;
+        questionsAnswered = 0;
+        results = [];
+        generateNewQuestion();
+    });
+
+    submitBtn.addEventListener('click', checkAnswer);
+    userAnswerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') checkAnswer(); });
+    nextQBtn.addEventListener('click', generateNewQuestion);
+
+    canvas.addEventListener('click', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+
+        if (gameState === 'playing' || gameState === 'feedback') {
+            if (mouseX >= replayButton.x && mouseX <= replayButton.x + replayButton.width &&
+                mouseY >= replayButton.y && mouseY <= replayButton.y + replayButton.height) {
+                speak(currentNumber);
+            }
+        } else if (gameState === 'summary') {
+            if (mouseX >= restartButton.x && mouseX <= restartButton.x + restartButton.width &&
+                mouseY >= restartButton.y && mouseY <= restartButton.y + restartButton.height) {
+                resetGame();
+            }
+        }
+    });
+
+    window.onload = () => {
+        draw();
+    };
+</script>
+
+</body>
+</html>
