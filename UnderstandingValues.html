@@ -180,6 +180,9 @@
     const synth = window.speechSynthesis;
     let voices = [];
     let audioCtx;
+    
+    let confettiParticles = [];
+    const confettiColors = ['#f94144', '#f3722c', '#f8961e', '#f9c74f', '#90be6d', '#43aa8b', '#577590'];
 
     // --- 初始化與設定 ---
     function initCoins() {
@@ -199,22 +202,26 @@
 
     function playSuccessSound() {
         if (!audioCtx) return;
+        // [FIX] 產生更長、更有氣勢的「小號」音效
         const osc = audioCtx.createOscillator();
         const gainNode = audioCtx.createGain();
         osc.connect(gainNode);
         gainNode.connect(audioCtx.destination);
-        osc.type = 'sine';
+        osc.type = 'sawtooth'; // 鋸齒波聽起來更像銅管樂器
         const now = audioCtx.currentTime;
-        const noteDuration = 0.08;
-        const baseFreq = 523.25;
-        gainNode.gain.setValueAtTime(0.2, now);
-        osc.frequency.setValueAtTime(baseFreq, now);
-        osc.frequency.setValueAtTime(baseFreq * 5/4, now + noteDuration);
-        osc.frequency.setValueAtTime(baseFreq * 3/2, now + noteDuration * 2);
-        osc.frequency.setValueAtTime(baseFreq * 2, now + noteDuration * 3);
-        gainNode.gain.exponentialRampToValueAtTime(0.0001, now + noteDuration * 4);
+
+        // 設定音量包絡
+        gainNode.gain.setValueAtTime(0, now);
+        gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05); // 快速起音
+        gainNode.gain.linearRampToValueAtTime(0, now + 0.6); // 慢慢淡出
+
+        // 設定音高序列 (簡單的C大調號角聲)
+        osc.frequency.setValueAtTime(523.25, now); // C5
+        osc.frequency.setValueAtTime(783.99, now + 0.15); // G5
+        osc.frequency.setValueAtTime(1046.50, now + 0.3); // C6
+
         osc.start(now);
-        osc.stop(now + noteDuration * 4.5);
+        osc.stop(now + 0.6); // 總長度為 0.6 秒
     }
 
     function playFailSound() {
@@ -290,6 +297,7 @@
 
         if (isCorrect) {
             playSuccessSound();
+            createConfetti(canvas.width / 2, 0);
             score++;
         } else {
             playFailSound();
@@ -330,6 +338,9 @@
                     drawButton(replayButton, '#28a745');
                 }
             }
+        }
+        if (confettiParticles.length > 0) {
+            updateAndDrawConfetti();
         }
     }
 
@@ -392,8 +403,8 @@
         const isCorrect = results[results.length - 1].correct;
 
         if (isCorrect) {
-             let feedbackText = `你排出的總額是 ${userAnswer}。完全正確！`;
-             drawText(feedbackText, canvas.width / 2, dropZone.y + dropZone.height + 40, 24, '#2ecc71');
+             let feedbackText = `你好棒！完全正確！`;
+             drawText(feedbackText, canvas.width / 2, dropZone.y + dropZone.height + 40, 28, '#2ecc71');
         } else {
             let userFeedback = `你排出的總額是 ${userAnswer}。`;
             drawText(userFeedback, canvas.width / 2, dropZone.y + dropZone.height + 30, 24, '#cf6679');
@@ -452,6 +463,46 @@
         ctx.fillText(text, x, y);
     }
 
+    // --- 灑花動畫函式 ---
+    function createConfetti(x, y) {
+        for (let i = 0; i < 100; i++) {
+            confettiParticles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 15,
+                vy: Math.random() * 10 + 5,
+                color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+                size: Math.random() * 8 + 4,
+                life: 120
+            });
+        }
+    }
+
+    function updateAndDrawConfetti() {
+        const gravity = 0.2;
+        for (let i = confettiParticles.length - 1; i >= 0; i--) {
+            const p = confettiParticles[i];
+            p.vy += gravity;
+            p.x += p.vx;
+            p.y += p.vy;
+            p.life--;
+
+            if (p.life <= 0) {
+                confettiParticles.splice(i, 1);
+            } else {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 120;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+        if (confettiParticles.length > 0) {
+            requestAnimationFrame(draw);
+        } else {
+            draw();
+        }
+    }
+
     // --- 互動邏輯 ---
     function generateDigitRects() {
         numberDigits = [];
@@ -484,7 +535,6 @@
         const pos = getMousePos(e.touches ? e.touches[0] : e);
 
         if (gameState === 'playing') {
-            // [FIX] 增加觸控半徑，讓手機更容易點擊
             const touchRadiusMultiplier = 1.5; 
             
             for (let i = droppedCoins.length - 1; i >= 0; i--) {
@@ -541,7 +591,6 @@
     function handleMouseUp() {
         if (isDragging) {
             if (isInside(draggedCoin, dropZone)) {
-                // [FIX] 自動對齊邏輯
                 const gridCellSize = 65;
                 const itemsPerRow = Math.floor(dropZone.width / gridCellSize);
                 const newIndex = droppedCoins.length;
