@@ -57,7 +57,6 @@
 <body class="bg-gray-900 text-gray-200">
 
     <div id="start-screen" class="min-h-screen w-full flex items-center justify-center p-4 bg-dots-pattern">
-        <!-- 採用更適合橫幅的兩欄式佈局 -->
         <div class="w-full max-w-4xl mx-auto bg-slate-800/80 backdrop-blur-xl border border-slate-600 rounded-2xl shadow-2xl p-8 grid md:grid-cols-2 gap-12 items-center">
             <div class="text-center md:text-left">
                 <h1 class="text-5xl lg:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-indigo-500 mb-4">數學加法遊戲</h1>
@@ -100,7 +99,7 @@
                     <legend class="px-2 text-lg font-semibold text-teal-400">輔助模式</legend>
                     <div id="token-toggle-group" class="grid grid-cols-2 gap-4 mt-2">
                         <button data-value="true" class="toggle-option active">自動顯示錢幣</button>
-                        <button data-value="false" class="toggle-option">手動操作錢幣</button>
+                        <button data-value="false" class="toggle-option">手寫計算板</button>
                     </div>
                     <input type="hidden" id="show-tokens-hidden" value="true">
                 </fieldset>
@@ -119,7 +118,6 @@
             </div>
         </div>
         <div id="controls-container" class="mt-6 w-full max-w-2xl mx-auto text-center space-y-4">
-            <!-- 更新：重構控制項佈局 -->
             <div class="flex items-center gap-4">
                 <button id="clear-tokens-btn" class="btn btn-danger text-lg hidden flex-shrink-0">清除</button>
                 <input type="number" id="answer-input" class="text-4xl text-center flex-grow p-3 border-4 border-slate-600 bg-slate-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-indigo-500" placeholder="請輸入答案">
@@ -156,7 +154,7 @@
 
         // --- 遊戲狀態 ---
         let gameState = { questions: [], currentQuestionIndex: 0, correctAnswers: 0, wrongAnswers: 0, settings: {} };
-        let interactiveState = { tokensOnBoard: [], paletteTokens: [], draggedToken: null, dragOffsetX: 0, dragOffsetY: 0 };
+        let handwritingState = { isDrawing: false, paths: [] };
         let staticClickState = { tokens: [], runningTotal: 0 };
 
         // --- 音效與語音 ---
@@ -213,7 +211,7 @@
             ctx.scale(dpr, dpr);
             if (gameState.questions.length > 0 && gameScreen.classList.contains('hidden') === false) {
                 if (gameState.settings.showTokens) { initStaticTokens(); } 
-                else { initInteractiveCanvas(); }
+                else { initHandwritingCanvas(); }
             }
         }
 
@@ -258,7 +256,7 @@
                 initStaticTokens();
             } else {
                 clearTokensBtn.classList.remove('hidden');
-                initInteractiveCanvas();
+                initHandwritingCanvas();
             }
             setTimeout(() => speak(`${numberToChineseSpeech(q.num1)} 加 ${numberToChineseSpeech(q.num2)}`), 500);
         }
@@ -303,29 +301,30 @@
             ctx.stroke();
         }
 
-        // --- 互動式錢幣拖曳邏輯 ---
-        function initInteractiveCanvas() {
-            interactiveState = { tokensOnBoard: [], paletteTokens: [], draggedToken: null, dragOffsetX: 0, dragOffsetY: 0 };
-            const canvasWidth = canvas.width / (window.devicePixelRatio || 1);
-            const paletteY = canvas.height / (window.devicePixelRatio || 1) - (PADDING + TOKEN_RADIUS);
-            const paletteXStart = canvasWidth / 2 - (4 * (TOKEN_RADIUS * 2 + PADDING)) / 2;
-            places.forEach((place, i) => {
-                interactiveState.paletteTokens.push({ id: `p_${place}`, value: place, x: paletteXStart + i * (TOKEN_RADIUS * 2 + PADDING), y: paletteY, isPalette: true });
-            });
-            drawInteractiveCanvas();
+        // --- 手寫計算板邏輯 ---
+        function initHandwritingCanvas() {
+            handwritingState = { isDrawing: false, paths: [] };
+            drawHandwritingCanvas();
         }
-        function drawInteractiveCanvas() {
-            const canvasWidth = canvas.width / (window.devicePixelRatio || 1), canvasHeight = canvas.height / (window.devicePixelRatio || 1);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            const mainAreaHeight = canvasHeight - (PADDING * 2 + TOKEN_RADIUS * 2), rowHeight = mainAreaHeight / 4, midX = canvasWidth / 2;
-            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
-            ctx.beginPath(); ctx.moveTo(midX, PADDING); ctx.lineTo(midX, mainAreaHeight); ctx.stroke(); ctx.setLineDash([]);
-            places.forEach((place, index) => { const rowY = rowHeight * index + PADDING; drawPlaceRow(rowY, place, canvasWidth); });
-            const paletteAreaY = mainAreaHeight + PADDING;
-            ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(0, paletteAreaY, canvasWidth, canvasHeight - paletteAreaY);
-            interactiveState.paletteTokens.forEach(token => drawToken(token));
-            interactiveState.tokensOnBoard.forEach(token => drawToken(token));
-            if (interactiveState.draggedToken) drawToken(interactiveState.draggedToken, true);
+        function drawHandwritingCanvas() {
+            const canvasWidth = canvas.width / (window.devicePixelRatio || 1);
+            const canvasHeight = canvas.height / (window.devicePixelRatio || 1);
+            ctx.fillStyle = '#1e293b'; // slate-800
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            
+            ctx.strokeStyle = '#ef4444'; // red-500
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+
+            handwritingState.paths.forEach(path => {
+                ctx.beginPath();
+                ctx.moveTo(path[0].x, path[0].y);
+                for (let i = 1; i < path.length; i++) {
+                    ctx.lineTo(path[i].x, path[i].y);
+                }
+                ctx.stroke();
+            });
         }
         
         // --- 通用繪圖函式 ---
@@ -357,22 +356,17 @@
         }
         function onCanvasStart(e) {
             if (gameState.settings.showTokens) { onTokenClick(e); } 
-            else { onDragStart(e); }
+            else { startDrawing(e); }
         }
         function onCanvasMove(e) { 
             if (gameState.settings.showTokens) return;
-            if (interactiveState.draggedToken) {
-                e.preventDefault();
-                onDragMove(e);
-            }
+            draw(e);
         }
         function onCanvasEnd(e) { 
             if (gameState.settings.showTokens) return;
-            if (interactiveState.draggedToken) {
-                e.preventDefault();
-                onDragEnd(e);
-            }
+            stopDrawing(e);
         }
+
         function onTokenClick(e) {
             const pos = getMousePos(e);
             let tokenClicked = false;
@@ -385,60 +379,26 @@
                     speak(numberToChineseSpeech(staticClickState.runningTotal)); drawStaticTokens(); break;
                 }
             }
-            if (tokenClicked) {
-                e.preventDefault();
-            }
+            if (tokenClicked) { e.preventDefault(); }
         }
-        function onDragStart(e) {
-            const pos = getMousePos(e); let foundToken = null;
-            for (let i = interactiveState.tokensOnBoard.length - 1; i >= 0; i--) {
-                const token = interactiveState.tokensOnBoard[i]; const dx = pos.x - token.x; const dy = pos.y - token.y;
-                if (dx * dx + dy * dy < TOKEN_RADIUS * TOKEN_RADIUS) { foundToken = token; interactiveState.tokensOnBoard.splice(i, 1); break; }
-            }
-            if (!foundToken) {
-                for (const token of interactiveState.paletteTokens) {
-                    const dx = pos.x - token.x; const dy = pos.y - token.y;
-                    if (dx * dx + dy * dy < TOKEN_RADIUS * TOKEN_RADIUS) { foundToken = { ...token, id: Date.now(), isPalette: false }; break; }
-                }
-            }
-            if (foundToken) {
-                e.preventDefault();
-                interactiveState.draggedToken = foundToken;
-                interactiveState.tokensOnBoard.push(foundToken);
-                interactiveState.dragOffsetX = pos.x - foundToken.x; interactiveState.dragOffsetY = pos.y - foundToken.y;
-            }
-        }
-        function onDragMove(e) {
-            if (!interactiveState.draggedToken) return;
+
+        function startDrawing(e) {
+            e.preventDefault();
+            handwritingState.isDrawing = true;
             const pos = getMousePos(e);
-            interactiveState.draggedToken.x = pos.x - interactiveState.dragOffsetX;
-            interactiveState.draggedToken.y = pos.y - interactiveState.dragOffsetY;
-            requestAnimationFrame(drawInteractiveCanvas);
+            const newPath = [pos];
+            handwritingState.paths.push(newPath);
+            drawHandwritingCanvas();
         }
-        function onDragEnd(e) {
-            const token = interactiveState.draggedToken; if (!token) return;
-            const canvasWidth = canvas.width / (window.devicePixelRatio || 1), canvasHeight = canvas.height / (window.devicePixelRatio || 1);
-            const mainAreaHeight = canvasHeight - (PADDING * 2 + TOKEN_RADIUS * 2), rowHeight = mainAreaHeight / 4, midX = canvasWidth / 2;
-            const dropX = token.x, dropY = token.y;
-            const tokenIndex = interactiveState.tokensOnBoard.findIndex(t => t.id === token.id);
-            if (dropY > mainAreaHeight) {
-                if (tokenIndex > -1) interactiveState.tokensOnBoard.splice(tokenIndex, 1);
-            } else {
-                const placeIndex = Math.floor((dropY - PADDING) / rowHeight);
-                if (placeIndex >= 0 && placeIndex < 4 && places[placeIndex] === token.value) {
-                    const column = dropX < midX ? 0 : 1;
-                    const rowY = rowHeight * placeIndex + PADDING;
-                    const tokensInColumnRow = interactiveState.tokensOnBoard.filter(t => t.id !== token.id && t.column === column && t.value === token.value);
-                    token.column = column;
-                    token.y = rowY + TOKEN_RADIUS;
-                    const startX = column === 0 ? PADDING * 4 : midX + PADDING;
-                    token.x = startX + tokensInColumnRow.length * (TOKEN_RADIUS * 2 + 5);
-                } else {
-                    if (tokenIndex > -1) interactiveState.tokensOnBoard.splice(tokenIndex, 1);
-                }
-            }
-            interactiveState.draggedToken = null;
-            drawInteractiveCanvas();
+        function draw(e) {
+            if (!handwritingState.isDrawing) return;
+            e.preventDefault();
+            const pos = getMousePos(e);
+            handwritingState.paths[handwritingState.paths.length - 1].push(pos);
+            drawHandwritingCanvas();
+        }
+        function stopDrawing(e) {
+            handwritingState.isDrawing = false;
         }
 
         // --- 答題與流程控制 ---
@@ -484,13 +444,12 @@
         window.addEventListener('resize', resizeCanvas);
         startGameBtn.addEventListener('click', startGame);
         checkAnswerBtn.addEventListener('click', checkAnswer);
-        answerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !checkAnswerBtn.disabled) { checkAnswer(); } });
         nextQuestionBtn.addEventListener('click', () => { gameState.currentQuestionIndex++; loadNextQuestion(); });
         playAgainBtn.addEventListener('click', playAgain);
         clearTokensBtn.addEventListener('click', () => {
             if (!gameState.settings.showTokens) {
-                interactiveState.tokensOnBoard = [];
-                drawInteractiveCanvas();
+                handwritingState.paths = [];
+                drawHandwritingCanvas();
             }
         });
         canvas.addEventListener('mousedown', onCanvasStart);
