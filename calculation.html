@@ -101,7 +101,7 @@
             cursor: not-allowed;
         }
         #settings-controls { display: flex; }
-        #game-area { display: none; }
+        #game-area, #summary-area { display: none; }
         .answer-area {
             display: flex;
             justify-content: center;
@@ -109,6 +109,42 @@
             gap: 1rem;
             width: 100%;
         }
+        /* [NEW] 新增結果報告樣式 */
+        #summary-area {
+            color: #e0e0e0;
+        }
+        .summary-results {
+            display: flex;
+            justify-content: space-around;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            text-align: left;
+        }
+        .result-list {
+            width: 48%;
+        }
+        .result-list h3 {
+            margin-top: 0;
+        }
+        .result-list ul {
+            list-style-type: none;
+            padding: 0;
+            margin: 0;
+            max-height: 150px; /* 設定最大高度 */
+            overflow-y: auto; /* 超出高度時顯示捲動條 */
+            background-color: #2c2c2c;
+            border-radius: 8px;
+            padding: 0.5rem;
+        }
+        .result-list li {
+            padding: 0.3rem 0.5rem;
+            border-bottom: 1px solid #444;
+        }
+        .result-list li:last-child {
+            border-bottom: none;
+        }
+        #correct-list h3 { color: #2ecc71; }
+        #incorrect-list h3 { color: #cf6679; }
     </style>
 </head>
 <body>
@@ -157,6 +193,23 @@
             <button id="submit-btn">送出答案</button>
         </div>
     </div>
+
+    <!-- [NEW] 新增結果報告區塊 -->
+    <div id="summary-area" class="controls-container">
+        <h2>測驗結果分析</h2>
+        <h3 id="summary-score"></h3>
+        <div class="summary-results">
+            <div id="correct-list" class="result-list">
+                <h3>✔️ 答對的題目</h3>
+                <ul></ul>
+            </div>
+            <div id="incorrect-list" class="result-list">
+                <h3>❌ 答錯的題目</h3>
+                <ul></ul>
+            </div>
+        </div>
+        <button id="restart-btn">重新開始</button>
+    </div>
 </div>
 
 <script>
@@ -165,9 +218,11 @@
     
     const settingsControls = document.getElementById('settings-controls');
     const gameArea = document.getElementById('game-area');
+    const summaryArea = document.getElementById('summary-area');
     const startBtn = document.getElementById('start-btn');
     const userAnswerInput = document.getElementById('user-answer');
     const submitBtn = document.getElementById('submit-btn');
+    const restartBtn = document.getElementById('restart-btn');
     
     let gameState = 'settings';
     let score = 0, questionsAnswered = 0, totalQuestions = 10, timeLimit = 10;
@@ -260,9 +315,25 @@
         let n1, n2, answer, text;
 
         switch (operator) {
-            case '+': answer = n1 + n2; text = `${n1} + ${n2} = ?`; break;
-            case '-': if (n1 < n2) [n1, n2] = [n2, n1]; answer = n1 - n2; text = `${n1} - ${n2} = ?`; break;
-            case '*': answer = n1 * n2; text = `${n1} × ${n2} = ?`; break;
+            case '+':
+                n1 = getRandomNumberByDigits(n1Min, n1Max);
+                n2 = getRandomNumberByDigits(n2Min, n2Max);
+                answer = n1 + n2;
+                text = `${n1} + ${n2} = ?`;
+                break;
+            case '-':
+                n1 = getRandomNumberByDigits(n1Min, n1Max);
+                n2 = getRandomNumberByDigits(n2Min, n2Max);
+                if (n1 < n2) [n1, n2] = [n2, n1];
+                answer = n1 - n2;
+                text = `${n1} - ${n2} = ?`;
+                break;
+            case '*':
+                n1 = getRandomNumberByDigits(n1Min, n1Max);
+                n2 = getRandomNumberByDigits(n2Min, n2Max);
+                answer = n1 * n2;
+                text = `${n1} × ${n2} = ?`;
+                break;
             case '/':
                 let attempts = 0;
                 while (attempts < 100) {
@@ -271,42 +342,22 @@
                     if (n2 !== 0 && n1 % n2 === 0 && n1 !== n2) {
                         answer = n1 / n2;
                         text = `${n1} ÷ ${n2} = ?`;
-                        break;
+                        return { text, answer };
                     }
                     attempts++;
                 }
-                if (attempts >= 100) {
-                    n2 = 2;
-                    n1 = (getRandomNumberByDigits(n1Min, n1Max) * 2);
-                    answer = n1 / n2;
-                    text = `${n1} ÷ ${n2} = ?`;
-                }
+                n2 = 2;
+                n1 = (getRandomNumberByDigits(n1Min, n1Max) * 2);
+                answer = n1 / n2;
+                text = `${n1} ÷ ${n2} = ?`;
                 break;
-        }
-        
-        if (operator === '+') {
-            n1 = getRandomNumberByDigits(n1Min, n1Max);
-            n2 = getRandomNumberByDigits(n2Min, n2Max);
-            answer = n1 + n2;
-            text = `${n1} + ${n2} = ?`;
-        } else if (operator === '*') {
-            n1 = getRandomNumberByDigits(n1Min, n1Max);
-            n2 = getRandomNumberByDigits(n2Min, n2Max);
-            answer = n1 * n2;
-            text = `${n1} × ${n2} = ?`;
-        } else if (operator === '-') {
-            n1 = getRandomNumberByDigits(n1Min, n1Max);
-            n2 = getRandomNumberByDigits(n2Min, n2Max);
-            if (n1 < n2) [n1, n2] = [n2, n1];
-            answer = n1 - n2;
-            text = `${n1} - ${n2} = ?`;
         }
         return { text, answer };
     }
 
     function newQuestion() {
         if (questionsAnswered >= totalQuestions) {
-            drawSummary();
+            showSummary();
             return;
         }
         currentQuestion = generateQuestion();
@@ -322,7 +373,6 @@
         userAnswerInput.disabled = false;
         submitBtn.disabled = false;
         userAnswerInput.focus();
-        // [FIX] 更新語音報讀，將 "乘以" 改為 "成以"
         speak(currentQuestion.text.replace(' = ?', ' 等於多少').replace('×', '成以').replace('÷', '除以').replace('-', '減'));
         startTimer();
     }
@@ -391,11 +441,6 @@
         ctx.fillStyle = '#2c2c2c';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
-        if (gameState === 'summary') {
-            drawSummary();
-            return;
-        }
-
         drawGame();
         
         if (gameState === 'feedback') {
@@ -505,47 +550,36 @@
         }
     }
 
-    function drawSummary() {
+    function showSummary() {
         gameState = 'summary';
-        ctx.fillStyle = '#2c2c2c';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
+        gameArea.style.display = 'none';
+        summaryArea.style.display = 'flex';
+
         const accuracy = totalQuestions > 0 ? (score / totalQuestions * 100).toFixed(0) : 0;
-        ctx.font = `bold 32px 'Microsoft JhengHei'`;
-        ctx.fillStyle = '#e0e0e0';
-        ctx.textAlign = 'center';
-        ctx.fillText('測驗結果分析', canvas.width / 2, 50);
+        document.getElementById('summary-score').textContent = `得分: ${score}/${totalQuestions}  正確率: ${accuracy}%`;
+
+        const correctList = document.querySelector('#correct-list ul');
+        const incorrectList = document.querySelector('#incorrect-list ul');
+        correctList.innerHTML = '';
+        incorrectList.innerHTML = '';
+
+        results.forEach(r => {
+            const li = document.createElement('li');
+            if (r.correct) {
+                li.textContent = `${r.qText.replace('?', r.answer)}`;
+                correctList.appendChild(li);
+            } else {
+                li.textContent = `${r.qText.replace('?', r.answer)} (你的答案: ${r.userAnswer})`;
+                incorrectList.appendChild(li);
+            }
+        });
         
-        ctx.font = `bold 24px 'Microsoft JhengHei'`;
-        ctx.fillText(`得分: ${score}/${totalQuestions}  正確率: ${accuracy}%`, canvas.width / 2, 90);
-
-        const incorrect = results.filter(r => !r.correct);
-        if (incorrect.length > 0) {
-            ctx.font = `bold 20px 'Microsoft JhengHei'`;
-            ctx.fillStyle = '#cf6679';
-            ctx.textAlign = 'left';
-            ctx.fillText('錯誤題目回顧：', 40, 130);
-            
-            ctx.font = `18px Arial`;
-            ctx.fillStyle = '#e0e0e0';
-            let yPos = 160;
-            incorrect.forEach((r) => {
-                const text = `${r.qText.replace('?', r.answer)} (你的答案: ${r.userAnswer})`;
-                ctx.fillText(text, 50, yPos);
-                yPos += 25;
-            });
-        } else {
-             ctx.font = `bold 24px 'Microsoft JhengHei'`;
-             ctx.fillStyle = '#2ecc71';
-             ctx.fillText('太棒了，全部正確！', canvas.width / 2, 180);
+        if (correctList.children.length === 0) {
+            correctList.innerHTML = '<li>沒有答對的題目</li>';
         }
-
-        ctx.fillStyle = '#6200ee';
-        ctx.fillRect(canvas.width / 2 - 75, canvas.height - 70, 150, 50);
-        ctx.font = `bold 24px 'Microsoft JhengHei'`;
-        ctx.fillStyle = '#fff';
-        ctx.textAlign = 'center';
-        ctx.fillText('重新開始', canvas.width / 2, canvas.height - 38);
+        if (incorrectList.children.length === 0) {
+            incorrectList.innerHTML = '<li>太棒了，全部正確！</li>';
+        }
     }
 
     // --- 事件監聽 ---
@@ -594,19 +628,19 @@
             if (mouseX > canvas.width/2 - 75 && mouseX < canvas.width/2 + 75 && mouseY > 240 && mouseY < 290) {
                 newQuestion();
             }
-        } else if (gameState === 'summary') {
-            if (mouseX > canvas.width/2 - 75 && mouseX < canvas.width/2 + 75 && mouseY > canvas.height - 70 && mouseY < canvas.height - 20) {
-                gameState = 'settings';
-                settingsControls.style.display = 'flex';
-                gameArea.style.display = 'none';
-                draw();
-            }
         }
+    });
+    
+    restartBtn.addEventListener('click', () => {
+        gameState = 'settings';
+        summaryArea.style.display = 'none';
+        settingsControls.style.display = 'flex';
     });
 
     window.onload = () => {
         settingsControls.style.display = 'flex';
         gameArea.style.display = 'none';
+        summaryArea.style.display = 'none';
         draw();
     };
 </script>
