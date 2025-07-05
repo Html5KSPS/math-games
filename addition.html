@@ -172,31 +172,67 @@
         populateVoiceList();
         if (speechSynthesis.onvoiceschanged !== undefined) { speechSynthesis.onvoiceschanged = populateVoiceList; }
         
+        // 更新：修正「二」和「兩」的用法
         function numberToChineseSpeech(num) {
             if (num === 0) return '零';
-            const chineseNums = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
-            const chineseUnits = ['', '十', '百', '千'];
-            const chineseBigUnits = ['', '萬', '億'];
-            let str = String(num); let result = ''; let unitIndex = 0;
-            while (str.length > 0) {
-                let segment = str.length > 4 ? str.slice(-4) : str;
-                str = str.length > 4 ? str.slice(0, -4) : '';
-                let segmentResult = ''; let zeroFlag = false; 
-                for (let i = 0; i < segment.length; i++) {
-                    let digit = parseInt(segment[segment.length - 1 - i]);
-                    if (digit === 0) { zeroFlag = true; } 
-                    else {
-                        if (zeroFlag) { segmentResult = chineseNums[0] + segmentResult; zeroFlag = false; }
-                        if (digit === 2 && (i === 1 || i === 2 || i === 3 || unitIndex > 0)) { segmentResult = '兩' + chineseUnits[i] + segmentResult; } 
-                        else { segmentResult = chineseNums[digit] + chineseUnits[i] + segmentResult; }
+
+            const single = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+            const units = ['', '十', '百', '千'];
+            const bigUnits = ['', '萬', '億', '兆'];
+
+            function sectionToChinese(section) {
+                let str = String(section);
+                let res = '';
+                let zero = false;
+                let len = str.length;
+                for (let i = 0; i < len; i++) {
+                    let digit = parseInt(str[i]);
+                    let unit = len - 1 - i;
+                    if (digit === 0) {
+                        zero = true;
+                    } else {
+                        if (zero) {
+                            res += single[0];
+                            zero = false;
+                        }
+                        // 只有在「兩百」、「兩千」、「兩萬」等情況下用「兩」，其餘用「二」
+                        if (digit === 2 && (unit >= 2 || (unit === 1 && str.length > 2))) {
+                             res += '兩' + units[unit];
+                        } else {
+                             res += single[digit] + units[unit];
+                        }
                     }
                 }
-                if (segment.length >= 2 && segment.startsWith('1') && segmentResult.startsWith('一十')) { segmentResult = segmentResult.substring(1); }
-                if (segmentResult) { result = segmentResult + chineseBigUnits[unitIndex] + result; }
+                 // 修正：在任何情況下都將「兩」替換為「二」
+                return res.replace(/兩/g, '二');
+            }
+
+            let str = String(num);
+            let res = '';
+            let unitIndex = 0;
+            while (str.length > 0) {
+                let sectionStr = str.slice(-4);
+                str = str.slice(0, -4);
+                let part = sectionToChinese(parseInt(sectionStr));
+                if (part) {
+                    res = part + bigUnits[unitIndex] + res;
+                }
+                if (str.length > 0 && parseInt(sectionStr) < 1000 && parseInt(sectionStr) > 0) {
+                    res = '零' + res;
+                }
                 unitIndex++;
             }
-            return result.replace(/(零)$/, '').replace(/(零零)/, '零');
+            
+            res = res.replace(/零+/g, '零');
+            res = res.replace(/零(萬|億|兆)/g, '$1');
+            res = res.replace(/億萬/, '億');
+            res = res.replace(/零$/, '');
+            if (res.startsWith('一十')) {
+                res = res.substring(1);
+            }
+            return res;
         }
+
 
         function speak(text) { if (synth.speaking) { synth.cancel(); } const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; if (voices.length > 0) u.voice = voices[0]; u.pitch = 1; u.rate = 0.9; synth.speak(u); }
         const correctSound = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 } }).toDestination();
@@ -209,14 +245,16 @@
 
         function resizeCanvas() {
             const container = canvas.parentElement; const dpr = window.devicePixelRatio || 1;
+            // 更新：調整高度計算，為「累計」行確保足夠空間
             canvas.width = container.clientWidth * dpr;
-            canvas.height = Math.min(container.clientWidth * 0.6, window.innerHeight * 0.6) * dpr;
+            canvas.height = Math.min(container.clientWidth * 0.7, window.innerHeight * 0.6) * dpr;
             canvas.style.width = `${container.clientWidth}px`;
-            canvas.style.height = `${Math.min(container.clientWidth * 0.6, window.innerHeight * 0.6)}px`;
+            canvas.style.height = `${Math.min(container.clientWidth * 0.7, window.innerHeight * 0.6)}px`;
             ctx.scale(dpr, dpr);
             if (gameState.questions.length > 0) {
-                if (gameState.settings.showTokens) { initStaticTokens(); } 
-                else { initInteractiveCanvas(); }
+                // 更新：resize時只重繪，不重新初始化狀態
+                if (gameState.settings.showTokens) { drawStaticTokens(); } 
+                else { drawInteractiveCanvas(); }
             }
         }
 
