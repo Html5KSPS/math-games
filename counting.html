@@ -94,8 +94,9 @@
                         <div class="flex items-center gap-4">
                             <input type="number" id="start-num" value="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-center text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
                             <span class="text-gray-400">到</span>
-                            <input type="number" id="end-num" value="100" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-center text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            <input type="number" id="end-num" class="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-center text-gray-400 cursor-not-allowed" readonly>
                         </div>
+                        <p class="text-xs text-gray-500 mt-2">結束數字會根據起始數字和計數模式自動計算 (固定100個數字)。</p>
                     </div>
 
                     <div>
@@ -185,11 +186,8 @@
             // 語音合成相關
             const synth = window.speechSynthesis;
             let voices = [];
-            let currentUtterance = null;
             let isAutoReading = false;
-            let autoReadQueue = [];
-            let currentAutoReadIndex = 0;
-
+            
             function populateVoiceList() {
                 voices = synth.getVoices().filter(voice => voice.lang.includes('zh-TW'));
                 voiceEl.innerHTML = ''; 
@@ -205,91 +203,127 @@
                 });
             }
 
+            function updateEndNumber() {
+                const start = parseInt(startNumEl.value);
+                const step = parseInt(stepEl.value);
+                if (isNaN(start) || isNaN(step) || step <= 0) {
+                    return;
+                }
+                const end = start + (99 * step);
+                endNumEl.value = end;
+            }
+
             populateVoiceList();
             if (speechSynthesis.onvoiceschanged !== undefined) {
                 speechSynthesis.onvoiceschanged = populateVoiceList;
             }
+            
+            updateEndNumber();
+            startNumEl.addEventListener('input', updateEndNumber);
+            stepEl.addEventListener('change', updateEndNumber);
 
-            function speak(numberToSpeak, element, onEndCallback) {
-                if (synth.speaking) {
-                    synth.cancel(); 
-                    if (currentUtterance && currentUtterance.element) {
-                        currentUtterance.element.classList.remove('speaking');
-                    }
-                }
+            /**
+             * 報讀指定的數字 (Promise-based)
+             * @param {number | string} numberToSpeak - 要報讀的數字
+             * @param {HTMLElement} element - 對應的數字DOM元素
+             * @returns {Promise<void>} - 在語音結束或被中斷時解析的Promise
+             */
+            function speak(numberToSpeak, element) {
+                return new Promise((resolve) => {
+                    const utterance = new SpeechSynthesisUtterance(numberToSpeak.toString());
+                    const selectedVoiceName = voiceEl.selectedOptions[0].getAttribute('data-name');
+                    const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
 
-                const utterance = new SpeechSynthesisUtterance(numberToSpeak.toString());
-                const selectedVoiceName = voiceEl.selectedOptions[0].getAttribute('data-name');
-                const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
+                    utterance.voice = selectedVoice || voices[0];
+                    utterance.lang = 'zh-TW';
+                    utterance.rate = parseFloat(rateEl.value);
 
-                utterance.voice = selectedVoice || voices[0];
-                utterance.lang = 'zh-TW';
-                utterance.rate = parseFloat(rateEl.value);
-                utterance.element = element;
+                    utterance.onstart = () => {
+                        if (element) element.classList.add('speaking');
+                    };
 
-                const interval = parseFloat(intervalTimeEl.value) * 1000;
+                    utterance.onend = () => {
+                        if (element) element.classList.remove('speaking');
+                        resolve();
+                    };
+                    
+                    utterance.onerror = (event) => {
+                        if (element) element.classList.remove('speaking');
+                        if (event.error !== 'interrupted') {
+                            console.error('語音合成發生錯誤:', event.error);
+                        }
+                        resolve(); // 即使出錯或中斷，也繼續流程
+                    };
 
-                utterance.onstart = () => {
-                    if (element) element.classList.add('speaking');
-                };
-
-                utterance.onend = () => {
-                    if (element) element.classList.remove('speaking');
-                    currentUtterance = null;
-                    if (onEndCallback) {
-                        setTimeout(onEndCallback, interval);
-                    }
-                };
-                
-                utterance.onerror = (event) => {
-                    if (event.error !== 'interrupted') console.error('語音合成發生錯誤:', event.error);
-                    if (element) element.classList.remove('speaking');
-                    if (onEndCallback) {
-                        setTimeout(onEndCallback, interval);
-                    }
-                };
-
-                currentUtterance = utterance;
-                synth.speak(utterance);
+                    synth.speak(utterance);
+                });
             }
+            
+            /**
+             * 創建一個可暫停的延遲 Promise
+             * @param {number} ms - 延遲的毫秒數
+             * @returns {Promise<void>}
+             */
+            const delay = ms => new Promise(res => setTimeout(res, ms));
 
             function stopSpeaking() {
                 isAutoReading = false;
-                synth.cancel();
+                synth.cancel(); // 立即停止當前語音
                 document.querySelectorAll('.speaking').forEach(el => el.classList.remove('speaking'));
                 statusMessage.textContent = '';
                 generateBtn.textContent = '生成數字 / 開始學習';
-                generateBtn.disabled = false;
                 setSettingsDisabled(false);
             }
 
             function generateGrid(numbers, isManualMode, fontSizeClass) {
                 numberGrid.innerHTML = '';
-                const cells = [];
                 numbers.forEach(num => {
                     const cell = document.createElement('div');
                     cell.className = `number-cell bg-gray-800 rounded-lg p-2 md:p-3 font-bold ${fontSizeClass}`;
-                    cell.textContent = num.toLocaleString('en-US'); // 使用千分位分隔符
+                    cell.textContent = num.toLocaleString('en-US');
                     if (isManualMode) {
                         cell.addEventListener('click', () => {
-                            if (!isAutoReading) speak(num, cell);
+                            if (!isAutoReading) {
+                                synth.cancel(); // 中斷之前的語音
+                                speak(num, cell);
+                            }
                         });
                     }
                     numberGrid.appendChild(cell);
-                    cells.push(cell);
                 });
-                return cells;
+                return Array.from(numberGrid.children); // 返回DOM元素陣列
             }
+            
+            /**
+             * 執行自動報讀的主循環
+             * @param {Array<number>} numbers - 要報讀的數字陣列
+             * @param {Array<HTMLElement>} cells - 對應的DOM元素陣列
+             */
+            async function runAutoReadSequence(numbers, cells) {
+                isAutoReading = true;
+                statusMessage.textContent = '自動報讀中...';
+                generateBtn.textContent = '停止報讀';
+                setSettingsDisabled(true);
 
-            function runAutoReadSequence() {
-                if (!isAutoReading || currentAutoReadIndex >= autoReadQueue.length) {
-                    stopSpeaking();
-                    return;
+                for (let i = 0; i < numbers.length; i++) {
+                    if (!isAutoReading) break; // 如果用戶點擊停止，則跳出循環
+
+                    const num = numbers[i];
+                    const element = cells[i];
+                    
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    
+                    await speak(num, element);
+                    
+                    if (!isAutoReading) break; // 唸完後再檢查一次
+
+                    const interval = parseFloat(intervalTimeEl.value) * 1000;
+                    await delay(interval);
                 }
-                const { num, element } = autoReadQueue[currentAutoReadIndex];
-                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                currentAutoReadIndex++;
-                speak(num, element, runAutoReadSequence);
+                
+                if (isAutoReading) { // 如果是自然結束而不是被中斷
+                    stopSpeaking();
+                }
             }
             
             function setSettingsDisabled(disabled) {
@@ -303,14 +337,15 @@
                     stopSpeaking();
                     return;
                 }
-                if (synth.speaking) synth.cancel();
+                
+                synth.cancel(); // 開始前先清空任何殘留的語音
 
                 const start = parseInt(startNumEl.value);
                 const end = parseInt(endNumEl.value);
                 const step = parseInt(stepEl.value);
 
                 if (isNaN(start) || isNaN(end) || isNaN(step) || start > end || step <= 0) {
-                    statusMessage.textContent = '請輸入有效的數字範圍和累加值！';
+                    statusMessage.textContent = '請輸入有效的起始數字和累加值！';
                     return;
                 }
                 statusMessage.textContent = '';
@@ -320,35 +355,26 @@
                     numbers.push(i);
                 }
 
-                // 計算包含千分位逗號後的最大長度
                 const maxFormattedLength = Math.max(
                     start.toLocaleString('en-US').length,
                     end.toLocaleString('en-US').length
                 );
 
-                // 根據格式化後的長度決定字體大小
                 let fontSizeClass = 'text-lg md:text-2xl';
-                if (maxFormattedLength >= 11) { // e.g., 1,000,000,000
+                if (maxFormattedLength >= 11) {
                     fontSizeClass = 'text-[9px] md:text-[11px]';
-                } else if (maxFormattedLength >= 9) { // e.g., 10,000,000
+                } else if (maxFormattedLength >= 9) {
                     fontSizeClass = 'text-[10px] md:text-xs';
-                } else if (maxFormattedLength >= 7) { // e.g., 100,000
+                } else if (maxFormattedLength >= 7) {
                     fontSizeClass = 'text-xs md:text-sm';
-                } else if (maxFormattedLength >= 5) { // e.g., 1,000 or 10,000
+                } else if (maxFormattedLength >= 5) {
                     fontSizeClass = 'text-sm md:text-base';
                 }
 
+                const cells = generateGrid(numbers, !autoModeToggle.checked, fontSizeClass);
+                
                 if (autoModeToggle.checked) {
-                    const cells = generateGrid(numbers, false, fontSizeClass); 
-                    autoReadQueue = numbers.map((num, index) => ({ num, element: cells[index] }));
-                    currentAutoReadIndex = 0;
-                    isAutoReading = true;
-                    statusMessage.textContent = '自動報讀中...';
-                    generateBtn.textContent = '停止報讀';
-                    setSettingsDisabled(true);
-                    setTimeout(runAutoReadSequence, 500);
-                } else {
-                    generateGrid(numbers, true, fontSizeClass);
+                    runAutoReadSequence(numbers, cells);
                 }
             });
         });
