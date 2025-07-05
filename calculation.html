@@ -81,8 +81,8 @@
             text-align: center;
         }
         #user-answer {
-            width: 80%;
-            max-width: 300px;
+            width: 60%;
+            max-width: 250px;
             font-size: 1.8em;
             margin-top: 1rem;
         }
@@ -96,8 +96,19 @@
             border-radius: 8px;
             cursor: pointer;
         }
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
         #settings-controls { display: flex; }
         #game-area { display: none; }
+        .answer-area {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 1rem;
+            width: 100%;
+        }
     </style>
 </head>
 <body>
@@ -141,7 +152,10 @@
 
     <div id="game-area">
         <canvas id="game-canvas" width="650" height="300"></canvas>
-        <input type="number" id="user-answer" placeholder="請輸入答案...">
+        <div class="answer-area">
+            <input type="number" id="user-answer" placeholder="請輸入答案...">
+            <button id="submit-btn">送出答案</button>
+        </div>
     </div>
 </div>
 
@@ -153,6 +167,7 @@
     const gameArea = document.getElementById('game-area');
     const startBtn = document.getElementById('start-btn');
     const userAnswerInput = document.getElementById('user-answer');
+    const submitBtn = document.getElementById('submit-btn');
     
     let gameState = 'settings';
     let score = 0, questionsAnswered = 0, totalQuestions = 10, timeLimit = 10;
@@ -169,6 +184,7 @@
     
     let confettiParticles = [];
     const confettiColors = ['#f94144', '#f3722c', '#f8961e', '#f9c74f', '#90be6d', '#43aa8b', '#577590'];
+    let feedbackAnimation = { active: false, startTime: 0 };
 
     // --- 音效與語音 ---
     function initAudioContext() {
@@ -192,7 +208,7 @@
             osc.frequency.setValueAtTime(1046.50, now + 0.3);
             osc.start(now);
             osc.stop(now + 0.6);
-        } else { // incorrect or timeout
+        } else {
             osc.type = 'square';
             osc.frequency.setValueAtTime(100, now);
             gainNode.gain.setValueAtTime(0.3, now);
@@ -241,39 +257,56 @@
         const n2Min = parseInt(document.getElementById('n2-min-digits').value);
         const n2Max = parseInt(document.getElementById('n2-max-digits').value);
         
-        let n1 = getRandomNumberByDigits(n1Min, n1Max);
-        let n2 = getRandomNumberByDigits(n2Min, n2Max);
-        let answer, text;
+        let n1, n2, answer, text;
 
         switch (operator) {
-            case '+':
-                answer = n1 + n2;
-                text = `${n1} + ${n2} = ?`;
-                break;
-            case '-':
-                if (n1 < n2) [n1, n2] = [n2, n1];
-                answer = n1 - n2;
-                text = `${n1} - ${n2} = ?`;
-                break;
-            case '*':
-                answer = n1 * n2;
-                text = `${n1} × ${n2} = ?`;
-                break;
+            case '+': answer = n1 + n2; text = `${n1} + ${n2} = ?`; break;
+            case '-': if (n1 < n2) [n1, n2] = [n2, n1]; answer = n1 - n2; text = `${n1} - ${n2} = ?`; break;
+            case '*': answer = n1 * n2; text = `${n1} × ${n2} = ?`; break;
             case '/':
-                n2 = getRandomNumberByDigits(n2Min, n2Max);
-                if (n2 === 0) n2 = 1;
-                const tempAnswer = getRandomNumberByDigits(n1Min, n1Max);
-                n1 = n2 * tempAnswer;
-                answer = tempAnswer;
-                text = `${n1} ÷ ${n2} = ?`;
+                let attempts = 0;
+                while (attempts < 100) {
+                    n1 = getRandomNumberByDigits(n1Min, n1Max);
+                    n2 = getRandomNumberByDigits(n2Min, n2Max);
+                    if (n2 !== 0 && n1 % n2 === 0 && n1 !== n2) {
+                        answer = n1 / n2;
+                        text = `${n1} ÷ ${n2} = ?`;
+                        break;
+                    }
+                    attempts++;
+                }
+                if (attempts >= 100) {
+                    n2 = 2;
+                    n1 = (getRandomNumberByDigits(n1Min, n1Max) * 2);
+                    answer = n1 / n2;
+                    text = `${n1} ÷ ${n2} = ?`;
+                }
                 break;
+        }
+        
+        if (operator === '+') {
+            n1 = getRandomNumberByDigits(n1Min, n1Max);
+            n2 = getRandomNumberByDigits(n2Min, n2Max);
+            answer = n1 + n2;
+            text = `${n1} + ${n2} = ?`;
+        } else if (operator === '*') {
+            n1 = getRandomNumberByDigits(n1Min, n1Max);
+            n2 = getRandomNumberByDigits(n2Min, n2Max);
+            answer = n1 * n2;
+            text = `${n1} × ${n2} = ?`;
+        } else if (operator === '-') {
+            n1 = getRandomNumberByDigits(n1Min, n1Max);
+            n2 = getRandomNumberByDigits(n2Min, n2Max);
+            if (n1 < n2) [n1, n2] = [n2, n1];
+            answer = n1 - n2;
+            text = `${n1} - ${n2} = ?`;
         }
         return { text, answer };
     }
 
     function newQuestion() {
         if (questionsAnswered >= totalQuestions) {
-            showSummary();
+            drawSummary();
             return;
         }
         currentQuestion = generateQuestion();
@@ -287,9 +320,10 @@
         questionsAnswered++;
         userAnswerInput.value = '';
         userAnswerInput.disabled = false;
+        submitBtn.disabled = false;
         userAnswerInput.focus();
-        // [FIX] 修正語音報讀，避免重複 "等於"
-        speak(currentQuestion.text.replace(' = ?', ' 等於多少').replace('×', '乘以').replace('÷', '除以'));
+        // [FIX] 更新語音報讀，將 "乘以" 改為 "成以"
+        speak(currentQuestion.text.replace(' = ?', ' 等於多少').replace('×', '成以').replace('÷', '除以').replace('-', '減'));
         startTimer();
     }
 
@@ -297,19 +331,12 @@
         cancelAnimationFrame(animationFrameId);
         clearTimeout(timerId);
         userAnswerInput.disabled = true;
+        submitBtn.disabled = true;
         gameState = 'feedback';
 
         const userAnswer = parseInt(userAnswerInput.value);
         const isCorrect = !isTimeout && userAnswer === currentQuestion.answer;
         
-        if (isCorrect) {
-            score++;
-            playSound('correct');
-            createConfetti(canvas.width / 2, 0);
-        } else {
-            playSound('incorrect');
-        }
-
         results.push({
             qText: currentQuestion.text,
             userAnswer: isNaN(userAnswer) ? '未作答' : userAnswer,
@@ -317,7 +344,17 @@
             correct: isCorrect
         });
 
-        drawFeedback(isCorrect, isTimeout);
+        if (isCorrect) {
+            score++;
+            playSound('correct');
+            createConfetti(canvas.width / 2, 0);
+            feedbackAnimation.active = true;
+            feedbackAnimation.startTime = Date.now();
+        } else {
+            playSound('incorrect');
+        }
+
+        draw();
     }
 
     function startTimer() {
@@ -327,7 +364,9 @@
         function update() {
             const elapsedTime = (Date.now() - startTime) / 1000;
             timeRemaining = Math.max(0, timeLimit - elapsedTime);
-            drawGame();
+            if (gameState === 'playing') {
+               draw();
+            }
             if (timeRemaining > 0 && gameState === 'playing') {
                 animationFrameId = requestAnimationFrame(update);
             }
@@ -341,6 +380,13 @@
     }
 
     // --- 繪圖函式 ---
+    function gameLoop() {
+        draw();
+        if (confettiParticles.length > 0 || feedbackAnimation.active) {
+            requestAnimationFrame(gameLoop);
+        }
+    }
+
     function draw() {
         ctx.fillStyle = '#2c2c2c';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -353,7 +399,9 @@
         drawGame();
         
         if (gameState === 'feedback') {
-            drawFeedback(results[results.length - 1].correct, timeRemaining <= 0);
+            if (results.length > 0) {
+                drawFeedback(results[results.length - 1].correct);
+            }
         }
 
         if (confettiParticles.length > 0) {
@@ -362,9 +410,6 @@
     }
 
     function drawGame() {
-        ctx.fillStyle = '#2c2c2c';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
         ctx.font = `bold 24px 'Microsoft JhengHei'`;
         ctx.fillStyle = '#e0e0e0';
         ctx.textAlign = 'left';
@@ -387,12 +432,26 @@
         }
     }
 
-    function drawFeedback(isCorrect, isTimeout) {
+    function drawFeedback(isCorrect) {
         if (isCorrect) {
-            ctx.font = `bold 48px 'Microsoft JhengHei'`;
-            ctx.fillStyle = '#2ecc71';
-            ctx.textAlign = 'center';
-            ctx.fillText('你好棒！', canvas.width / 2, 150);
+            const elapsed = Date.now() - feedbackAnimation.startTime;
+            const fadeDelay = 1000;
+            const fadeDuration = 800;
+            let alpha = 1.0;
+            if (elapsed > fadeDelay) {
+                alpha = Math.max(0, 1 - (elapsed - fadeDelay) / fadeDuration);
+            }
+            if (alpha <= 0) {
+                feedbackAnimation.active = false;
+            }
+
+            ctx.globalAlpha = alpha;
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, 150, 60, 0, Math.PI * 2, false);
+            ctx.strokeStyle = '#2ecc71';
+            ctx.lineWidth = 15;
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
         } else {
             ctx.strokeStyle = '#e74c3c';
             ctx.lineWidth = 20;
@@ -405,7 +464,6 @@
             ctx.stroke();
             
             ctx.font = `bold 36px 'Microsoft JhengHei'`;
-            // [FIX] 將正確答案的文字顏色改為紅色
             ctx.fillStyle = '#e74c3c';
             ctx.textAlign = 'center';
             ctx.fillText(`正確答案: ${currentQuestion.answer}`, canvas.width / 2, 80);
@@ -428,6 +486,7 @@
                 size: Math.random() * 8 + 4, life: 120
             });
         }
+        gameLoop();
     }
 
     function updateAndDrawConfetti() {
@@ -444,12 +503,10 @@
                 ctx.globalAlpha = 1.0;
             }
         }
-        if (confettiParticles.length > 0) {
-            requestAnimationFrame(draw);
-        }
     }
 
     function drawSummary() {
+        gameState = 'summary';
         ctx.fillStyle = '#2c2c2c';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
@@ -471,9 +528,11 @@
             
             ctx.font = `18px Arial`;
             ctx.fillStyle = '#e0e0e0';
-            incorrect.forEach((r, i) => {
+            let yPos = 160;
+            incorrect.forEach((r) => {
                 const text = `${r.qText.replace('?', r.answer)} (你的答案: ${r.userAnswer})`;
-                ctx.fillText(text, 50, 160 + i * 25);
+                ctx.fillText(text, 50, yPos);
+                yPos += 25;
             });
         } else {
              ctx.font = `bold 24px 'Microsoft JhengHei'`;
@@ -509,6 +568,12 @@
         gameArea.style.display = 'block';
         newQuestion();
     });
+    
+    submitBtn.addEventListener('click', () => {
+        if (gameState === 'playing') {
+            checkAnswer();
+        }
+    });
 
     userAnswerInput.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
@@ -534,6 +599,7 @@
                 gameState = 'settings';
                 settingsControls.style.display = 'flex';
                 gameArea.style.display = 'none';
+                draw();
             }
         }
     });
