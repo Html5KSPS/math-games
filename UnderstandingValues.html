@@ -314,7 +314,7 @@
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         if (gameState === 'welcome') {
-            drawText('歡迎挑戰位值與錢幣！', canvas.width / 2, 200, 40, '#e0e0e0');
+            drawText('請拖曳與題目數字等值的錢幣到框框內', canvas.width / 2, 250, 32, '#e0e0e0');
         } else if (gameState === 'playing' || gameState === 'feedback' || gameState === 'summary') {
             drawTopBar();
             if (gameState === 'summary') {
@@ -358,7 +358,6 @@
     }
 
     function drawCoins() {
-        // [FIX] 只有在作答階段才繪製錢幣庫，避免與回饋重疊
         if (gameState === 'playing') {
             coins.forEach(coin => {
                 ctx.beginPath();
@@ -369,7 +368,6 @@
             });
         }
         
-        // 繪製已放置的錢幣
         droppedCoins.forEach(coin => {
             ctx.beginPath();
             ctx.arc(coin.x, coin.y, coin.radius, 0, Math.PI * 2);
@@ -378,7 +376,6 @@
             drawText(coin.value, coin.x, coin.y + 8, coin.radius * 0.7, '#000');
         });
 
-        // 繪製正在拖曳的錢幣
         if (isDragging && draggedCoin) {
             ctx.beginPath();
             ctx.arc(draggedCoin.x, draggedCoin.y, draggedCoin.radius, 0, Math.PI * 2);
@@ -487,10 +484,13 @@
         const pos = getMousePos(e.touches ? e.touches[0] : e);
 
         if (gameState === 'playing') {
+            // [FIX] 增加觸控半徑，讓手機更容易點擊
+            const touchRadiusMultiplier = 1.5; 
+            
             for (let i = droppedCoins.length - 1; i >= 0; i--) {
                 const coin = droppedCoins[i];
                 const dist = Math.hypot(pos.x - coin.x, pos.y - coin.y);
-                if (dist < coin.radius) {
+                if (dist < coin.radius * touchRadiusMultiplier) {
                     isDragging = true;
                     draggedCoin = droppedCoins.splice(i, 1)[0];
                     dragOffsetX = pos.x - draggedCoin.x;
@@ -503,7 +503,7 @@
             for (let i = coins.length - 1; i >= 0; i--) {
                 const coin = coins[i];
                 const dist = Math.hypot(pos.x - coin.x, pos.y - coin.y);
-                if (dist < coin.radius) {
+                if (dist < coin.radius * touchRadiusMultiplier) {
                     isDragging = true;
                     draggedCoin = { ...coin };
                     dragOffsetX = pos.x - draggedCoin.x;
@@ -541,6 +541,16 @@
     function handleMouseUp() {
         if (isDragging) {
             if (isInside(draggedCoin, dropZone)) {
+                // [FIX] 自動對齊邏輯
+                const gridCellSize = 65;
+                const itemsPerRow = Math.floor(dropZone.width / gridCellSize);
+                const newIndex = droppedCoins.length;
+                const col = newIndex % itemsPerRow;
+                const row = Math.floor(newIndex / itemsPerRow);
+                
+                draggedCoin.x = dropZone.x + (gridCellSize / 2) + col * gridCellSize;
+                draggedCoin.y = dropZone.y + (gridCellSize / 2) + row * gridCellSize;
+
                 droppedCoins.push(draggedCoin);
             }
             
