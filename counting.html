@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數數小幫手 (Counting Helper)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #1f2937; /* bg-gray-800 */
+        }
+        .number-cell {
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent; /* 移除行動裝置點擊高亮 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden; /* 確保文字不會溢出 */
+            white-space: nowrap; /* 強制不換行 */
+        }
+        .number-cell:hover {
+            transform: scale(1.05);
+            background-color: #4b5563; /* bg-gray-600 */
+        }
+        .speaking {
+            background-color: #f59e0b; /* bg-amber-500 */
+            color: #000000; /* 改為純黑色以獲得最大對比度 */
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.7);
+        }
+        /* 客製化 Switch Toggle */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #4b5563; /* bg-gray-600 */
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #3b82f6; /* bg-blue-500 */
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-white">數數小幫手</h1>
+            <p class="text-gray-400 mt-2">專為克服唱數進位困難設計的學習工具</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-8">
+            <!-- 設定面板 -->
+            <aside id="settings-panel" class="lg:w-1/3 bg-gray-900 p-6 rounded-2xl shadow-lg">
+                <h2 class="text-2xl font-bold mb-6 border-b border-gray-700 pb-2">學習設定</h2>
+                
+                <div class="space-y-6">
+                    <div>
+                        <label for="start-num" class="block mb-2 font-medium text-gray-300">1. 數字範圍</label>
+                        <div class="flex items-center gap-4">
+                            <input type="number" id="start-num" value="1" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-center text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            <span class="text-gray-400">到</span>
+                            <input type="number" id="end-num" value="100" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-center text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="step" class="block mb-2 font-medium text-gray-300">2. 計數模式 (累加)</label>
+                        <select id="step" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            <option value="1">累加 1</option>
+                            <option value="5">累加 5</option>
+                            <option value="10">累加 10</option>
+                            <option value="50">累加 50</option>
+                            <option value="100">累加 100</option>
+                            <option value="500">累加 500</option>
+                            <option value="1000">累加 1,000</option>
+                            <option value="5000">累加 5,000</option>
+                            <option value="10000">累加 10,000</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label for="rate" class="block mb-2 font-medium text-gray-300">3. 唸讀語速</label>
+                        <div class="flex items-center gap-4">
+                            <span class="text-sm text-gray-400">慢</span>
+                            <input type="range" id="rate" min="0.5" max="1.5" value="1" step="0.1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                            <span class="text-sm text-gray-400">快</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="interval-time" class="block mb-2 font-medium text-gray-300">4. 報讀間隔 (秒)</label>
+                        <div class="flex items-center gap-4">
+                            <span class="text-sm text-gray-400">0.2s</span>
+                            <input type="range" id="interval-time" min="0.2" max="1.0" value="0.6" step="0.1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                            <span class="text-sm text-gray-400">1.0s</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label for="voice" class="block mb-2 font-medium text-gray-300">5. 唸讀語音</label>
+                        <select id="voice" class="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+                            <option>正在載入語音...</option>
+                        </select>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-700">
+                        <label class="block mb-2 font-medium text-gray-300">6. 學習模式</label>
+                        <div class="flex items-center justify-between bg-gray-800 p-3 rounded-lg">
+                            <span class="font-medium">自動連續報讀</span>
+                            <label class="switch">
+                                <input type="checkbox" id="auto-mode-toggle">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button id="generate-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg transition duration-300 shadow-md">
+                        生成數字 / 開始學習
+                    </button>
+                    <div id="status-message" class="text-center text-yellow-400 h-5 mt-2"></div>
+                </div>
+            </aside>
+
+            <!-- 數字顯示區 -->
+            <main class="lg:w-2/3 bg-gray-900 p-4 md:p-6 rounded-2xl shadow-lg min-h-[60vh] flex flex-col">
+                <div id="number-grid-container" class="flex-grow overflow-y-auto">
+                    <div id="number-grid" class="grid grid-cols-5 md:grid-cols-10 gap-2 md:gap-3">
+                        <!-- 數字將會動態生成於此 -->
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // DOM 元素
+            const startNumEl = document.getElementById('start-num');
+            const endNumEl = document.getElementById('end-num');
+            const stepEl = document.getElementById('step');
+            const rateEl = document.getElementById('rate');
+            const intervalTimeEl = document.getElementById('interval-time');
+            const voiceEl = document.getElementById('voice');
+            const generateBtn = document.getElementById('generate-btn');
+            const numberGrid = document.getElementById('number-grid');
+            const autoModeToggle = document.getElementById('auto-mode-toggle');
+            const statusMessage = document.getElementById('status-message');
+            const settingsPanel = document.getElementById('settings-panel');
+
+            // 語音合成相關
+            const synth = window.speechSynthesis;
+            let voices = [];
+            let currentUtterance = null;
+            let isAutoReading = false;
+            let autoReadQueue = [];
+            let currentAutoReadIndex = 0;
+
+            function populateVoiceList() {
+                voices = synth.getVoices().filter(voice => voice.lang.includes('zh-TW'));
+                voiceEl.innerHTML = ''; 
+                if (voices.length === 0) {
+                    voiceEl.innerHTML = '<option>未找到台灣中文語音</option>';
+                    return;
+                }
+                voices.forEach(voice => {
+                    const option = document.createElement('option');
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    option.setAttribute('data-name', voice.name);
+                    voiceEl.appendChild(option);
+                });
+            }
+
+            populateVoiceList();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = populateVoiceList;
+            }
+
+            function speak(numberToSpeak, element, onEndCallback) {
+                if (synth.speaking) {
+                    synth.cancel(); 
+                    if (currentUtterance && currentUtterance.element) {
+                        currentUtterance.element.classList.remove('speaking');
+                    }
+                }
+
+                const utterance = new SpeechSynthesisUtterance(numberToSpeak.toString());
+                const selectedVoiceName = voiceEl.selectedOptions[0].getAttribute('data-name');
+                const selectedVoice = voices.find(voice => voice.name === selectedVoiceName);
+
+                utterance.voice = selectedVoice || voices[0];
+                utterance.lang = 'zh-TW';
+                utterance.rate = parseFloat(rateEl.value);
+                utterance.element = element;
+
+                const interval = parseFloat(intervalTimeEl.value) * 1000;
+
+                utterance.onstart = () => {
+                    if (element) element.classList.add('speaking');
+                };
+
+                utterance.onend = () => {
+                    if (element) element.classList.remove('speaking');
+                    currentUtterance = null;
+                    if (onEndCallback) {
+                        setTimeout(onEndCallback, interval);
+                    }
+                };
+                
+                utterance.onerror = (event) => {
+                    if (event.error !== 'interrupted') console.error('語音合成發生錯誤:', event.error);
+                    if (element) element.classList.remove('speaking');
+                    if (onEndCallback) {
+                        setTimeout(onEndCallback, interval);
+                    }
+                };
+
+                currentUtterance = utterance;
+                synth.speak(utterance);
+            }
+
+            function stopSpeaking() {
+                isAutoReading = false;
+                synth.cancel();
+                document.querySelectorAll('.speaking').forEach(el => el.classList.remove('speaking'));
+                statusMessage.textContent = '';
+                generateBtn.textContent = '生成數字 / 開始學習';
+                generateBtn.disabled = false;
+                setSettingsDisabled(false);
+            }
+
+            function generateGrid(numbers, isManualMode, fontSizeClass) {
+                numberGrid.innerHTML = '';
+                const cells = [];
+                numbers.forEach(num => {
+                    const cell = document.createElement('div');
+                    cell.className = `number-cell bg-gray-800 rounded-lg p-2 md:p-3 font-bold ${fontSizeClass}`;
+                    cell.textContent = num.toLocaleString('en-US'); // 使用千分位分隔符
+                    if (isManualMode) {
+                        cell.addEventListener('click', () => {
+                            if (!isAutoReading) speak(num, cell);
+                        });
+                    }
+                    numberGrid.appendChild(cell);
+                    cells.push(cell);
+                });
+                return cells;
+            }
+
+            function runAutoReadSequence() {
+                if (!isAutoReading || currentAutoReadIndex >= autoReadQueue.length) {
+                    stopSpeaking();
+                    return;
+                }
+                const { num, element } = autoReadQueue[currentAutoReadIndex];
+                element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                currentAutoReadIndex++;
+                speak(num, element, runAutoReadSequence);
+            }
+            
+            function setSettingsDisabled(disabled) {
+                settingsPanel.querySelectorAll('input, select, button').forEach(el => {
+                    if (el.id !== 'generate-btn') el.disabled = disabled;
+                });
+            }
+
+            generateBtn.addEventListener('click', () => {
+                if (isAutoReading) {
+                    stopSpeaking();
+                    return;
+                }
+                if (synth.speaking) synth.cancel();
+
+                const start = parseInt(startNumEl.value);
+                const end = parseInt(endNumEl.value);
+                const step = parseInt(stepEl.value);
+
+                if (isNaN(start) || isNaN(end) || isNaN(step) || start > end || step <= 0) {
+                    statusMessage.textContent = '請輸入有效的數字範圍和累加值！';
+                    return;
+                }
+                statusMessage.textContent = '';
+
+                const numbers = [];
+                for (let i = start; i <= end; i += step) {
+                    numbers.push(i);
+                }
+
+                // 計算包含千分位逗號後的最大長度
+                const maxFormattedLength = Math.max(
+                    start.toLocaleString('en-US').length,
+                    end.toLocaleString('en-US').length
+                );
+
+                // 根據格式化後的長度決定字體大小
+                let fontSizeClass = 'text-lg md:text-2xl';
+                if (maxFormattedLength >= 11) { // e.g., 1,000,000,000
+                    fontSizeClass = 'text-[9px] md:text-[11px]';
+                } else if (maxFormattedLength >= 9) { // e.g., 10,000,000
+                    fontSizeClass = 'text-[10px] md:text-xs';
+                } else if (maxFormattedLength >= 7) { // e.g., 100,000
+                    fontSizeClass = 'text-xs md:text-sm';
+                } else if (maxFormattedLength >= 5) { // e.g., 1,000 or 10,000
+                    fontSizeClass = 'text-sm md:text-base';
+                }
+
+                if (autoModeToggle.checked) {
+                    const cells = generateGrid(numbers, false, fontSizeClass); 
+                    autoReadQueue = numbers.map((num, index) => ({ num, element: cells[index] }));
+                    currentAutoReadIndex = 0;
+                    isAutoReading = true;
+                    statusMessage.textContent = '自動報讀中...';
+                    generateBtn.textContent = '停止報讀';
+                    setSettingsDisabled(true);
+                    setTimeout(runAutoReadSequence, 500);
+                } else {
+                    generateGrid(numbers, true, fontSizeClass);
+                }
+            });
+        });
+    </script>
+</body>
+</html>
