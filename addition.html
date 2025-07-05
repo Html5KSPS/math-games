@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數學加法小遊戲</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            touch-action: manipulation;
+        }
+        .btn {
+            @apply text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 focus:outline-none focus:ring-4;
+        }
+        .btn-primary { @apply bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-400; }
+        .btn-secondary { @apply bg-teal-600 hover:bg-teal-700 focus:ring-teal-400; }
+        .btn-warning { @apply bg-amber-500 hover:bg-amber-600 focus:ring-amber-400; }
+        .btn-danger { @apply bg-rose-600 hover:bg-rose-700 focus:ring-rose-400; }
+        .disabled-btn { @apply bg-gray-500 cursor-not-allowed transform-none; }
+        
+        .feedback-correct { animation: correct-pulse 0.8s ease-in-out; }
+        .feedback-wrong { animation: wrong-shake 0.5s ease-in-out; }
+        @keyframes correct-pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+            50% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(52, 211, 153, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+        }
+        @keyframes wrong-shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-10px); }
+            20%, 40%, 60%, 80% { transform: translateX(10px); }
+        }
+
+        /* 高對比的初始畫面樣式 */
+        .bg-dots-pattern {
+            background-image: radial-gradient(circle, #334155 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        /* 使用淺色背景與黑色文字，確保清晰 */
+        .custom-select, .custom-input {
+            @apply w-full p-3 border-2 bg-slate-200 border-slate-400 text-black rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition;
+        }
+        
+        /* 高對比的開關按鈕樣式 */
+        .toggle-option {
+            @apply w-full text-center font-semibold py-2 rounded-lg transition-all cursor-pointer border-2;
+        }
+        .toggle-option.active {
+            @apply bg-teal-500 text-white border-teal-500 shadow-lg scale-105;
+        }
+        .toggle-option:not(.active) {
+            @apply bg-slate-700 text-slate-300 border-slate-600 hover:bg-slate-600;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200">
+
+    <div id="start-screen" class="min-h-screen w-full flex items-center justify-center p-4 bg-dots-pattern">
+        <div class="w-full max-w-lg mx-auto bg-slate-800/80 backdrop-blur-xl border border-slate-600 rounded-2xl shadow-2xl p-8 space-y-8">
+            <div class="text-center">
+                <h1 class="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-indigo-500 mb-2">數學加法遊戲</h1>
+                <p class="text-slate-400">請設定您的遊戲</p>
+            </div>
+
+            <div class="space-y-6">
+                <fieldset class="border-t border-slate-700 pt-6">
+                    <legend class="px-2 text-lg font-semibold text-teal-400">題型設定</legend>
+                    <div class="grid grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <label for="num1-digits" class="block text-left font-medium text-slate-300 mb-2">被加數</label>
+                            <select id="num1-digits" class="custom-select">
+                                <option value="1">一位數</option><option value="2">二位數</option><option value="3">三位數</option><option value="4">四位數</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="num2-digits" class="block text-left font-medium text-slate-300 mb-2">加數</label>
+                            <select id="num2-digits" class="custom-select">
+                                <option value="1" selected>一位數</option><option value="2">二位數</option><option value="3">三位數</option><option value="4">四位數</option>
+                            </select>
+                        </div>
+                    </div>
+                </fieldset>
+
+                <fieldset class="border-t border-slate-700 pt-6">
+                    <legend class="px-2 text-lg font-semibold text-teal-400">規則設定</legend>
+                    <div class="space-y-6 mt-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="carry-rule" class="block text-left font-medium text-slate-300 mb-2">加法規則</label>
+                                <select id="carry-rule" class="custom-select">
+                                    <option value="any">不限制</option><option value="carry">僅進位加法</option><option value="no-carry">僅不進位加法</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="num-questions" class="block text-left font-medium text-slate-300 mb-2">題目數量</label>
+                                <input type="number" id="num-questions" value="10" min="1" max="50" class="custom-input">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-left font-medium text-slate-300 mb-2">輔助模式</label>
+                            <div id="token-toggle-group" class="grid grid-cols-2 gap-4">
+                                <button data-value="true" class="toggle-option active">自動顯示錢幣</button>
+                                <button data-value="false" class="toggle-option">手動操作錢幣</button>
+                            </div>
+                            <input type="hidden" id="show-tokens-hidden" value="true">
+                        </div>
+                    </div>
+                </fieldset>
+            </div>
+
+            <button id="start-game-btn" class="w-full text-xl btn btn-primary">開始遊戲</button>
+        </div>
+    </div>
+
+    <div id="game-screen" class="hidden min-h-screen flex flex-col p-4 bg-gray-900">
+        <div class="flex-grow flex flex-col items-center justify-center">
+            <div id="question-container" class="text-center mb-4">
+                <p id="question-text" class="text-6xl font-bold text-gray-200 tracking-wider"></p>
+            </div>
+            <div class="w-full max-w-5xl bg-slate-800 rounded-xl shadow-lg p-2 sm:p-4">
+                <canvas id="game-canvas"></canvas>
+            </div>
+        </div>
+        <div id="controls-container" class="mt-6 w-full max-w-2xl mx-auto text-center space-y-4">
+            <div class="flex items-center gap-4">
+                <button id="clear-tokens-btn" class="btn btn-danger text-lg hidden flex-shrink-0">清除</button>
+                <input type="number" id="answer-input" class="text-4xl text-center w-full p-3 border-4 border-slate-600 bg-slate-700 rounded-lg focus:outline-none focus:ring-4 focus:ring-indigo-500" placeholder="請輸入答案">
+                <button id="check-answer-btn" class="btn btn-secondary text-2xl flex-shrink-0">確認</button>
+            </div>
+            <div id="feedback-section" class="h-10 text-2xl font-bold">
+                <p id="feedback-text"></p>
+            </div>
+            <div class="flex items-center justify-center gap-4">
+                 <button id="next-question-btn" class="btn btn-warning text-2xl hidden">下一題</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="end-screen" class="hidden min-h-screen flex items-center justify-center p-4 bg-gray-900">
+        <div class="bg-slate-800 p-10 rounded-2xl shadow-2xl w-full max-w-md">
+            <h2 id="end-title" class="text-5xl font-bold text-indigo-400 mb-6">遊戲結束！</h2>
+            <div class="text-2xl space-y-4 mb-8 text-gray-300">
+                <p>總共題目：<span id="total-q" class="font-bold"></span> 題</p>
+                <p class="text-green-400">答對題數：<span id="correct-count" class="font-bold"></span> 題</p>
+                <p class="text-red-400">答錯題數：<span id="wrong-count" class="font-bold"></span> 題</p>
+            </div>
+            <button id="play-again-btn" class="btn btn-primary text-2xl w-full">再玩一次</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DOM 元素 ---
+        const startScreen = document.getElementById('start-screen'), gameScreen = document.getElementById('game-screen'), endScreen = document.getElementById('end-screen');
+        const num1DigitsSelect = document.getElementById('num1-digits'), num2DigitsSelect = document.getElementById('num2-digits'), carryRuleSelect = document.getElementById('carry-rule'), numQuestionsInput = document.getElementById('num-questions');
+        const tokenToggleGroup = document.getElementById('token-toggle-group'), showTokensHidden = document.getElementById('show-tokens-hidden');
+        const startGameBtn = document.getElementById('start-game-btn'), questionText = document.getElementById('question-text'), canvas = document.getElementById('game-canvas'), ctx = canvas.getContext('2d');
+        const answerInput = document.getElementById('answer-input'), checkAnswerBtn = document.getElementById('check-answer-btn'), nextQuestionBtn = document.getElementById('next-question-btn'), feedbackText = document.getElementById('feedback-text');
+        const totalQSpan = document.getElementById('total-q'), correctCountSpan = document.getElementById('correct-count'), wrongCountSpan = document.getElementById('wrong-count'), playAgainBtn = document.getElementById('play-again-btn');
+        const clearTokensBtn = document.getElementById('clear-tokens-btn');
+
+        // --- 遊戲狀態 ---
+        let gameState = { questions: [], currentQuestionIndex: 0, correctAnswers: 0, wrongAnswers: 0, settings: {} };
+        let interactiveState = { tokensOnBoard: [], paletteTokens: [], draggedToken: null, dragOffsetX: 0, dragOffsetY: 0 };
+        let staticClickState = { tokens: [], runningTotal: 0 };
+
+        // --- 音效與語音 ---
+        const synth = window.speechSynthesis; let voices = [];
+        function populateVoiceList() { voices = synth.getVoices().filter(v => v.lang.includes('zh-TW') || v.lang.includes('zh')); }
+        populateVoiceList();
+        if (speechSynthesis.onvoiceschanged !== undefined) { speechSynthesis.onvoiceschanged = populateVoiceList; }
+        
+        function numberToChineseSpeech(num) {
+            if (num === 0) return '零';
+            const chineseNums = ['零', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+            const chineseUnits = ['', '十', '百', '千'];
+            const chineseBigUnits = ['', '萬', '億'];
+            let str = String(num); let result = ''; let unitIndex = 0;
+            while (str.length > 0) {
+                let segment = str.length > 4 ? str.slice(-4) : str;
+                str = str.length > 4 ? str.slice(0, -4) : '';
+                let segmentResult = ''; let zeroFlag = false; 
+                for (let i = 0; i < segment.length; i++) {
+                    let digit = parseInt(segment[segment.length - 1 - i]);
+                    if (digit === 0) { zeroFlag = true; } 
+                    else {
+                        if (zeroFlag) { segmentResult = chineseNums[0] + segmentResult; zeroFlag = false; }
+                        if (digit === 2 && (i === 1 || i === 2 || i === 3 || unitIndex > 0)) { segmentResult = '兩' + chineseUnits[i] + segmentResult; } 
+                        else { segmentResult = chineseNums[digit] + chineseUnits[i] + segmentResult; }
+                    }
+                }
+                if (segment.length >= 2 && segment.startsWith('1') && segmentResult.startsWith('一十')) { segmentResult = segmentResult.substring(1); }
+                if (segmentResult) { result = segmentResult + chineseBigUnits[unitIndex] + result; }
+                unitIndex++;
+            }
+            return result.replace(/(零)$/, '').replace(/(零零)/, '零');
+        }
+
+        function speak(text) { if (synth.speaking) { synth.cancel(); } const u = new SpeechSynthesisUtterance(text); u.lang = 'zh-TW'; if (voices.length > 0) u.voice = voices[0]; u.pitch = 1; u.rate = 0.9; synth.speak(u); }
+        const correctSound = new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.005, decay: 0.1, sustain: 0.3, release: 1 } }).toDestination();
+        const wrongSound = new Tone.Synth({ oscillator: { type: 'square' }, envelope: { attack: 0.01, decay: 0.2, sustain: 0.2, release: 0.2 } }).toDestination();
+
+        // --- 畫布設定 ---
+        const TOKEN_COLORS = { 1: '#3b82f6', 10: '#ef4444', 100: '#22c55e', 1000: '#f97316' };
+        const TOKEN_RADIUS = 15; const PADDING = 20;
+        const places = [1000, 100, 10, 1]; const placeLabels = { 1000: '千', 100: '百', 10: '十', 1: '個' };
+
+        function resizeCanvas() {
+            const container = canvas.parentElement; const dpr = window.devicePixelRatio || 1;
+            canvas.width = container.clientWidth * dpr;
+            canvas.height = Math.min(container.clientWidth * 0.6, window.innerHeight * 0.6) * dpr;
+            canvas.style.width = `${container.clientWidth}px`;
+            canvas.style.height = `${Math.min(container.clientWidth * 0.6, window.innerHeight * 0.6)}px`;
+            ctx.scale(dpr, dpr);
+            if (gameState.questions.length > 0) {
+                if (gameState.settings.showTokens) { initStaticTokens(); } 
+                else { initInteractiveCanvas(); }
+            }
+        }
+
+        // --- 遊戲邏輯 (題庫生成等) ---
+        function generateNumber(digits) { if (digits == 0) return 0; const min = Math.pow(10, digits - 1); const max = Math.pow(10, digits) - 1; return Math.floor(Math.random() * (max - min + 1)) + min; }
+        function checkCarry(n1, n2) { let s1 = String(n1).padStart(4, '0'), s2 = String(n2).padStart(4, '0'); for (let i = 3; i >= 0; i--) { if (parseInt(s1[i]) + parseInt(s2[i]) >= 10) return true; } return false; }
+        function generateNoCarryNumbers(d1, d2) { let n1, n2; let attempts = 0; while (attempts < 500) { n1 = generateNumber(d1); n2 = generateNumber(d2); if (!checkCarry(n1, n2)) return [n1, n2]; attempts++; } let s1 = '', s2 = ''; const maxDigits = Math.max(d1, d2); for(let i = 0; i < maxDigits; i++) { const digit1 = Math.floor(Math.random() * 10); const digit2 = Math.floor(Math.random() * (10 - digit1)); s1 = digit1 + s1; s2 = digit2 + s2; } n1 = parseInt(s1); n2 = parseInt(s2); if (String(n1).length > d1) n1 = parseInt(String(n1).slice(-d1)); if (String(n2).length > d2) n2 = parseInt(String(n2).slice(-d2)); if (d1 > 0 && String(n1).length < d1) n1 += Math.pow(10, d1-1); if (d2 > 0 && String(n2).length < d2) n2 += Math.pow(10, d2-1); return [n1, n2]; }
+        function generateCarryNumbers(d1, d2) { let n1, n2; let attempts = 0; while (attempts < 500) { n1 = generateNumber(d1); n2 = generateNumber(d2); if (checkCarry(n1, n2)) return [n1, n2]; attempts++; } let [gen_n1, gen_n2] = generateNoCarryNumbers(d1, d2); let s1 = String(gen_n1).padStart(Math.max(d1,d2), '0'); let s2 = String(gen_n2).padStart(Math.max(d1,d2), '0'); const carryPos = Math.floor(Math.random() * Math.min(d1,d2)); const index = s1.length - 1 - carryPos; let digit1 = parseInt(s1[index]); while(digit1 + parseInt(s2[index]) < 10){ digit1 = Math.floor(Math.random()*9)+1; } s1 = s1.substring(0, index) + digit1 + s1.substring(index + 1); return [parseInt(s1), parseInt(s2)]; }
+        function generateQuestions() {
+            const { num1Digits, num2Digits, carryRule, numQuestions } = gameState.settings; const questions = [];
+            for (let i = 0; i < numQuestions; i++) {
+                let n1, n2;
+                if (carryRule === 'no-carry') { [n1, n2] = generateNoCarryNumbers(num1Digits, num2Digits); } 
+                else if (carryRule === 'carry') { [n1, n2] = generateCarryNumbers(num1Digits, num2Digits); }
+                else { n1 = generateNumber(num1Digits); n2 = generateNumber(num2Digits); }
+                questions.push({ num1: n1, num2: n2, answer: n1 + n2 });
+            }
+            gameState.questions = questions;
+        }
+
+        function startGame() {
+            gameState.settings = { num1Digits: parseInt(num1DigitsSelect.value), num2Digits: parseInt(num2DigitsSelect.value), carryRule: carryRuleSelect.value, numQuestions: parseInt(numQuestionsInput.value), showTokens: showTokensHidden.value === 'true' };
+            gameState.currentQuestionIndex = 0; gameState.correctAnswers = 0; gameState.wrongAnswers = 0;
+            generateQuestions();
+            startScreen.classList.add('hidden'); gameScreen.classList.remove('hidden'); endScreen.classList.add('hidden');
+            resizeCanvas(); loadNextQuestion();
+        }
+
+        function loadNextQuestion() {
+            if (gameState.currentQuestionIndex >= gameState.questions.length) { showEndScreen(); return; }
+            const q = gameState.questions[gameState.currentQuestionIndex];
+            questionText.textContent = `${q.num1} + ${q.num2} = ?`;
+            answerInput.value = ''; answerInput.disabled = false;
+            answerInput.classList.remove('feedback-correct', 'feedback-wrong', 'border-green-500', 'border-red-500');
+            answerInput.focus();
+            feedbackText.textContent = ''; feedbackText.className = 'h-10 text-2xl font-bold';
+            checkAnswerBtn.classList.remove('hidden', 'disabled-btn'); checkAnswerBtn.disabled = false;
+            nextQuestionBtn.classList.add('hidden');
+            canvas.parentElement.classList.remove('hidden');
+            if (gameState.settings.showTokens) {
+                clearTokensBtn.classList.add('hidden');
+                initStaticTokens();
+            } else {
+                clearTokensBtn.classList.remove('hidden');
+                initInteractiveCanvas();
+            }
+            setTimeout(() => speak(`${numberToChineseSpeech(q.num1)} 加 ${numberToChineseSpeech(q.num2)}`), 500);
+        }
+
+        // --- 靜態錢幣顯示 & 點擊計數邏輯 ---
+        function initStaticTokens() {
+            staticClickState = { tokens: [], runningTotal: 0 }; const q = gameState.questions[gameState.currentQuestionIndex];
+            const canvasWidth = canvas.width / (window.devicePixelRatio || 1), canvasHeight = canvas.height / (window.devicePixelRatio || 1);
+            const midX = canvasWidth / 2, rowHeight = canvasHeight / 5;
+            [q.num1, q.num2].forEach((number, numIndex) => {
+                const startX = numIndex === 0 ? PADDING * 4 : midX + PADDING;
+                places.forEach((place, placeIndex) => {
+                    const count = Math.floor((number % (place * 10)) / place); if (count === 0) return;
+                    let x = startX; const rowY = (rowHeight * placeIndex) + (PADDING * 2.5), y = rowY + TOKEN_RADIUS;
+                    for (let i = 0; i < count; i++) {
+                        staticClickState.tokens.push({ x, y, value: place, isCounted: false }); x += TOKEN_RADIUS * 2 + 5;
+                    }
+                });
+            });
+            drawStaticTokens();
+        }
+        function drawStaticTokens() {
+            const q = gameState.questions[gameState.currentQuestionIndex];
+            const canvasWidth = canvas.width / (window.devicePixelRatio || 1), canvasHeight = canvas.height / (window.devicePixelRatio || 1);
+            ctx.clearRect(0, 0, canvas.width, canvas.height); const midX = canvasWidth / 2, rowHeight = canvasHeight / 5;
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(midX, PADDING); ctx.lineTo(midX, rowHeight * 4 + PADDING); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = '#e2e8f0'; ctx.font = `bold ${TOKEN_RADIUS * 1.5}px 'Noto Sans TC'`; ctx.textAlign = 'center';
+            ctx.fillText(q.num1, midX / 2, PADDING + 10); ctx.fillText(q.num2, midX + midX / 2, PADDING + 10);
+            places.forEach((place, index) => { const rowY = (rowHeight * index) + (PADDING * 2.5); drawPlaceRow(rowY, place, canvasWidth); });
+            staticClickState.tokens.forEach(token => { drawToken(token); if (token.isCounted) drawMarkOnToken(token); });
+            const totalY = rowHeight * 4 + PADDING * 2.5;
+            ctx.fillStyle = '#facc15'; ctx.font = `bold ${TOKEN_RADIUS * 2}px 'Noto Sans TC'`; ctx.textAlign = 'center';
+            ctx.fillText(`累計: ${staticClickState.runningTotal}`, canvasWidth / 2, totalY);
+        }
+        function drawMarkOnToken(token) {
+            if (token.value === 10 || token.value === 1000) { ctx.strokeStyle = '#fef08a'; } 
+            else { ctx.strokeStyle = '#f87171'; }
+            ctx.lineWidth = 3; ctx.beginPath();
+            ctx.moveTo(token.x - TOKEN_RADIUS * 0.7, token.y - TOKEN_RADIUS * 0.7); ctx.lineTo(token.x + TOKEN_RADIUS * 0.7, token.y + TOKEN_RADIUS * 0.7);
+            ctx.moveTo(token.x + TOKEN_RADIUS * 0.7, token.y - TOKEN_RADIUS * 0.7); ctx.lineTo(token.x - TOKEN_RADIUS * 0.7, token.y + TOKEN_RADIUS * 0.7);
+            ctx.stroke();
+        }
+
+        // --- 互動式錢幣拖曳邏輯 ---
+        function initInteractiveCanvas() {
+            interactiveState = { tokensOnBoard: [], paletteTokens: [], draggedToken: null, dragOffsetX: 0, dragOffsetY: 0 };
+            const canvasWidth = canvas.width / (window.devicePixelRatio || 1);
+            const paletteY = canvas.height / (window.devicePixelRatio || 1) - (PADDING + TOKEN_RADIUS);
+            const paletteXStart = canvasWidth / 2 - (4 * (TOKEN_RADIUS * 2 + PADDING)) / 2;
+            places.forEach((place, i) => {
+                interactiveState.paletteTokens.push({ id: `p_${place}`, value: place, x: paletteXStart + i * (TOKEN_RADIUS * 2 + PADDING), y: paletteY, isPalette: true });
+            });
+            drawInteractiveCanvas();
+        }
+        function drawInteractiveCanvas() {
+            const canvasWidth = canvas.width / (window.devicePixelRatio || 1), canvasHeight = canvas.height / (window.devicePixelRatio || 1);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const mainAreaHeight = canvasHeight - (PADDING * 2 + TOKEN_RADIUS * 2), rowHeight = mainAreaHeight / 4, midX = canvasWidth / 2;
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2; ctx.setLineDash([5, 5]);
+            ctx.beginPath(); ctx.moveTo(midX, PADDING); ctx.lineTo(midX, mainAreaHeight); ctx.stroke(); ctx.setLineDash([]);
+            places.forEach((place, index) => { const rowY = rowHeight * index + PADDING; drawPlaceRow(rowY, place, canvasWidth); });
+            const paletteAreaY = mainAreaHeight + PADDING;
+            ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(0, paletteAreaY, canvasWidth, canvasHeight - paletteAreaY);
+            interactiveState.paletteTokens.forEach(token => drawToken(token));
+            interactiveState.tokensOnBoard.forEach(token => drawToken(token));
+            if (interactiveState.draggedToken) drawToken(interactiveState.draggedToken, true);
+        }
+        
+        // --- 通用繪圖函式 ---
+        function drawPlaceRow(rowY, place, canvasWidth) {
+            ctx.strokeStyle = '#334155'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(PADDING, rowY); ctx.lineTo(canvasWidth - PADDING, rowY); ctx.stroke();
+            ctx.fillStyle = '#94a3b8'; ctx.font = `bold ${TOKEN_RADIUS}px 'Noto Sans TC'`;
+            ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+            ctx.fillText(placeLabels[place], PADDING, rowY + TOKEN_RADIUS);
+        }
+        function drawToken(token, isDragging = false) {
+            ctx.save(); if (isDragging) { ctx.shadowColor = 'yellow'; ctx.shadowBlur = 20; }
+            ctx.fillStyle = TOKEN_COLORS[token.value];
+            ctx.beginPath(); ctx.arc(token.x, token.y, TOKEN_RADIUS, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'white'; ctx.font = `bold ${TOKEN_RADIUS-2}px sans-serif`;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(token.value, token.x, token.y);
+            ctx.restore();
+        }
+
+        // --- 事件處理 ---
+        function getMousePos(evt) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / (rect.width * window.devicePixelRatio || 1);
+            const scaleY = canvas.height / (rect.height * window.devicePixelRatio || 1);
+            const clientX = evt.clientX || (evt.touches && evt.touches[0].clientX);
+            const clientY = evt.clientY || (evt.touches && evt.touches[0].clientY);
+            return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+        }
+        function onCanvasStart(e) { e.preventDefault(); if (gameState.settings.showTokens) { onTokenClick(e); } else { onDragStart(e); } }
+        function onCanvasMove(e) { if (gameState.settings.showTokens) return; e.preventDefault(); onDragMove(e); }
+        function onCanvasEnd(e) { if (gameState.settings.showTokens) return; e.preventDefault(); onDragEnd(e); }
+        function onTokenClick(e) {
+            const pos = getMousePos(e);
+            for (let i = staticClickState.tokens.length - 1; i >= 0; i--) {
+                const token = staticClickState.tokens[i]; if (token.isCounted) continue;
+                const dx = pos.x - token.x; const dy = pos.y - token.y;
+                if (dx * dx + dy * dy < TOKEN_RADIUS * TOKEN_RADIUS) {
+                    token.isCounted = true; staticClickState.runningTotal += token.value;
+                    speak(numberToChineseSpeech(staticClickState.runningTotal)); drawStaticTokens(); break;
+                }
+            }
+        }
+        function onDragStart(e) {
+            const pos = getMousePos(e); let foundToken = null;
+            for (let i = interactiveState.tokensOnBoard.length - 1; i >= 0; i--) {
+                const token = interactiveState.tokensOnBoard[i]; const dx = pos.x - token.x; const dy = pos.y - token.y;
+                if (dx * dx + dy * dy < TOKEN_RADIUS * TOKEN_RADIUS) { foundToken = token; interactiveState.tokensOnBoard.splice(i, 1); break; }
+            }
+            if (!foundToken) {
+                for (const token of interactiveState.paletteTokens) {
+                    const dx = pos.x - token.x; const dy = pos.y - token.y;
+                    if (dx * dx + dy * dy < TOKEN_RADIUS * TOKEN_RADIUS) { foundToken = { ...token, id: Date.now(), isPalette: false }; break; }
+                }
+            }
+            if (foundToken) {
+                interactiveState.draggedToken = foundToken;
+                interactiveState.tokensOnBoard.push(foundToken);
+                interactiveState.dragOffsetX = pos.x - foundToken.x; interactiveState.dragOffsetY = pos.y - foundToken.y;
+            }
+        }
+        function onDragMove(e) {
+            if (!interactiveState.draggedToken) return;
+            const pos = getMousePos(e);
+            interactiveState.draggedToken.x = pos.x - interactiveState.dragOffsetX;
+            interactiveState.draggedToken.y = pos.y - interactiveState.dragOffsetY;
+            requestAnimationFrame(drawInteractiveCanvas);
+        }
+        function onDragEnd(e) {
+            const token = interactiveState.draggedToken; if (!token) return;
+            const canvasWidth = canvas.width / (window.devicePixelRatio || 1), canvasHeight = canvas.height / (window.devicePixelRatio || 1);
+            const mainAreaHeight = canvasHeight - (PADDING * 2 + TOKEN_RADIUS * 2), rowHeight = mainAreaHeight / 4, midX = canvasWidth / 2;
+            const dropX = token.x, dropY = token.y;
+            const tokenIndex = interactiveState.tokensOnBoard.findIndex(t => t.id === token.id);
+            if (dropY > mainAreaHeight) {
+                if (tokenIndex > -1) interactiveState.tokensOnBoard.splice(tokenIndex, 1);
+            } else {
+                const placeIndex = Math.floor((dropY - PADDING) / rowHeight);
+                if (placeIndex >= 0 && placeIndex < 4 && places[placeIndex] === token.value) {
+                    const column = dropX < midX ? 0 : 1;
+                    const rowY = rowHeight * placeIndex + PADDING;
+                    const tokensInColumnRow = interactiveState.tokensOnBoard.filter(t => t.id !== token.id && t.column === column && t.value === token.value);
+                    token.column = column;
+                    token.y = rowY + TOKEN_RADIUS;
+                    const startX = column === 0 ? PADDING * 4 : midX + PADDING;
+                    token.x = startX + tokensInColumnRow.length * (TOKEN_RADIUS * 2 + 5);
+                } else {
+                    if (tokenIndex > -1) interactiveState.tokensOnBoard.splice(tokenIndex, 1);
+                }
+            }
+            interactiveState.draggedToken = null;
+            drawInteractiveCanvas();
+        }
+
+        // --- 答題與流程控制 ---
+        function checkAnswer() {
+            if (answerInput.value === '') return;
+            Tone.start(); const userAnswer = parseInt(answerInput.value), correctAnswer = gameState.questions[gameState.currentQuestionIndex].answer;
+            answerInput.disabled = true; checkAnswerBtn.disabled = true; checkAnswerBtn.classList.add('disabled-btn');
+            if (userAnswer === correctAnswer) {
+                gameState.correctAnswers++;
+                feedbackText.textContent = '答對了！你真棒！'; feedbackText.className = 'h-10 text-2xl font-bold text-green-400';
+                answerInput.classList.add('feedback-correct', 'border-green-500');
+                correctSound.triggerAttackRelease('C5', '0.5s'); speak('答對了');
+            } else {
+                gameState.wrongAnswers++;
+                feedbackText.textContent = `答錯了，正確答案是 ${correctAnswer}`; feedbackText.className = 'h-10 text-2xl font-bold text-red-400';
+                answerInput.classList.add('feedback-wrong', 'border-red-500');
+                wrongSound.triggerAttackRelease('C3', '0.5s'); speak(`答錯了，正確答案是 ${numberToChineseSpeech(correctAnswer)}`);
+            }
+            checkAnswerBtn.classList.add('hidden'); nextQuestionBtn.classList.remove('hidden');
+            clearTokensBtn.classList.add('hidden');
+        }
+        function showEndScreen() {
+            gameScreen.classList.add('hidden'); endScreen.classList.remove('hidden');
+            totalQSpan.textContent = gameState.questions.length; correctCountSpan.textContent = gameState.correctAnswers; wrongCountSpan.textContent = gameState.wrongAnswers;
+            const accuracy = gameState.correctAnswers / gameState.questions.length;
+            let endMessage = "遊戲結束！";
+            if (accuracy === 1) { endMessage = "太厲害了，全部答對！"; }
+            else if (accuracy >= 0.7) { endMessage = "表現不錯，繼續加油！"; }
+            else { endMessage = "別氣餒，再試一次吧！"; }
+            document.getElementById('end-title').textContent = endMessage; speak(endMessage);
+        }
+        function playAgain() { endScreen.classList.add('hidden'); startScreen.classList.remove('hidden'); gameState.questions = []; }
+
+        // --- 事件監聽 ---
+        tokenToggleGroup.addEventListener('click', (e) => {
+            const button = e.target.closest('.toggle-option');
+            if (button) {
+                tokenToggleGroup.querySelectorAll('.toggle-option').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                showTokensHidden.value = button.dataset.value;
+            }
+        });
+        window.addEventListener('resize', resizeCanvas);
+        startGameBtn.addEventListener('click', startGame);
+        checkAnswerBtn.addEventListener('click', checkAnswer);
+        answerInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !checkAnswerBtn.disabled) { checkAnswer(); } });
+        nextQuestionBtn.addEventListener('click', () => { gameState.currentQuestionIndex++; loadNextQuestion(); });
+        playAgainBtn.addEventListener('click', playAgain);
+        clearTokensBtn.addEventListener('click', () => {
+            if (!gameState.settings.showTokens) {
+                interactiveState.tokensOnBoard = [];
+                drawInteractiveCanvas();
+            }
+        });
+        canvas.addEventListener('mousedown', onCanvasStart);
+        canvas.addEventListener('mousemove', onCanvasMove);
+        canvas.addEventListener('mouseup', onCanvasEnd);
+        canvas.addEventListener('touchstart', onCanvasStart, { passive: false });
+        canvas.addEventListener('touchmove', onCanvasMove, { passive: false });
+        canvas.addEventListener('touchend', onCanvasEnd);
+    </script>
+</body>
+</html>
