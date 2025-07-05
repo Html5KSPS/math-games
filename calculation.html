@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>心算大師：位數挑戰</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, 'Hiragino Sans GB', 'Microsoft JhengHei', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #121212;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        #app-container {
+            width: 100%;
+            max-width: 700px;
+            background-color: #1e1e1e;
+            padding: 1.5rem 2rem;
+            border-radius: 16px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            text-align: center;
+            border: 1px solid #333;
+        }
+        h1 {
+            color: #e0e0e0;
+            margin-bottom: 1.5rem;
+        }
+        canvas {
+            background-color: #2c2c2c;
+            border-radius: 12px;
+            border: 2px solid #444;
+            width: 100%;
+            height: auto;
+        }
+        .controls-container, .settings-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 1.2rem;
+            align-items: center;
+            margin-top: 1rem;
+        }
+        .input-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.8rem;
+            flex-wrap: wrap;
+        }
+        .input-group label, .digit-label {
+            font-size: 1.1em;
+            color: #bb86fc;
+        }
+        .op-group label {
+            font-size: 1.1em;
+            color: #e0e0e0;
+            padding: 0.5rem 1rem;
+            border: 2px solid #555;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .op-group input[type="checkbox"] { display: none; }
+        .op-group input[type="checkbox"]:checked + label {
+            background-color: #03dac6;
+            color: #000;
+            border-color: #03dac6;
+        }
+        .range-input, #user-answer, .digit-select {
+            width: 80px;
+            padding: 0.75rem;
+            font-size: 1.1em;
+            background-color: #333;
+            border: 2px solid #555;
+            color: #e0e0e0;
+            border-radius: 8px;
+            text-align: center;
+        }
+        #user-answer {
+            width: 80%;
+            max-width: 300px;
+            font-size: 1.8em;
+            margin-top: 1rem;
+        }
+        button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1.1em;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(145deg, #6200ee, #3700b3);
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #settings-controls { display: flex; }
+        #game-area { display: none; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <h1>心算大師：位數挑戰</h1>
+    
+    <div id="settings-controls" class="controls-container">
+        <div class="settings-grid">
+            <div class="input-group op-group">
+                <input type="checkbox" id="op-add" value="+" checked><label for="op-add">加+</label>
+                <input type="checkbox" id="op-sub" value="-"><label for="op-sub">減-</label>
+                <input type="checkbox" id="op-mul" value="*"><label for="op-mul">乘×</label>
+                <input type="checkbox" id="op-div" value="/"><label for="op-div">除÷</label>
+            </div>
+            <div class="input-group">
+                <span class="digit-label">第一個數字:</span>
+                <select id="n1-min-digits" class="digit-select"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+                <span style="color:#e0e0e0;">到</span>
+                <select id="n1-max-digits" class="digit-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select>
+                <span class="digit-label">位數</span>
+            </div>
+             <div class="input-group">
+                <span class="digit-label">第二個數字:</span>
+                <select id="n2-min-digits" class="digit-select"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+                <span style="color:#e0e0e0;">到</span>
+                <select id="n2-max-digits" class="digit-select"><option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="4">4</option></select>
+                <span class="digit-label">位數</span>
+            </div>
+             <div class="input-group">
+                <label for="time-limit">每題秒數</label>
+                <input type="number" id="time-limit" class="range-input" value="10" min="3" max="60">
+            </div>
+            <div class="input-group">
+                <label for="num-questions">總題數</label>
+                <input type="number" id="num-questions" class="range-input" value="10" min="1" max="50">
+            </div>
+        </div>
+        <button id="start-btn">開始挑戰</button>
+    </div>
+
+    <div id="game-area">
+        <canvas id="game-canvas" width="650" height="300"></canvas>
+        <input type="number" id="user-answer" placeholder="請輸入答案...">
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    
+    const settingsControls = document.getElementById('settings-controls');
+    const gameArea = document.getElementById('game-area');
+    const startBtn = document.getElementById('start-btn');
+    const userAnswerInput = document.getElementById('user-answer');
+    
+    let gameState = 'settings';
+    let score = 0, questionsAnswered = 0, totalQuestions = 10, timeLimit = 10;
+    let currentQuestion = {};
+    let results = [];
+    
+    let timerId;
+    let timeRemaining;
+    let animationFrameId;
+
+    const synth = window.speechSynthesis;
+    let voices = [];
+    let audioCtx;
+    
+    let confettiParticles = [];
+    const confettiColors = ['#f94144', '#f3722c', '#f8961e', '#f9c74f', '#90be6d', '#43aa8b', '#577590'];
+
+    // --- 音效與語音 ---
+    function initAudioContext() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+
+    function playSound(type) {
+        if (!audioCtx) return;
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        const now = audioCtx.currentTime;
+        if (type === 'correct') {
+            osc.type = 'sawtooth';
+            gainNode.gain.setValueAtTime(0, now);
+            gainNode.gain.linearRampToValueAtTime(0.4, now + 0.05);
+            gainNode.gain.linearRampToValueAtTime(0, now + 0.6);
+            osc.frequency.setValueAtTime(523.25, now);
+            osc.frequency.setValueAtTime(783.99, now + 0.15);
+            osc.frequency.setValueAtTime(1046.50, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.6);
+        } else { // incorrect or timeout
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(100, now);
+            gainNode.gain.setValueAtTime(0.3, now);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.start(now);
+            osc.stop(now + 0.3);
+        }
+    }
+
+    function speak(text) {
+        if (!synth) return;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-TW';
+        const preferredVoice = voices.find(v => v.lang === 'zh-TW') || voices.find(v => v.lang.startsWith('zh-'));
+        if (preferredVoice) utterance.voice = preferredVoice;
+        if (synth.speaking) synth.cancel();
+        setTimeout(() => synth.speak(utterance), 50);
+    }
+
+    function populateVoiceList() {
+        if (typeof synth === 'undefined') return;
+        voices = synth.getVoices().filter(voice => voice.lang.includes('zh'));
+        if (voices.length > 0 && synth.onvoiceschanged !== undefined) synth.onvoiceschanged = null;
+    }
+    populateVoiceList();
+    if (typeof synth !== 'undefined' && synth.onvoiceschanged !== undefined) synth.onvoiceschanged = populateVoiceList;
+
+    // --- 遊戲流程 ---
+    function getRandomNumberByDigits(minDigits, maxDigits) {
+        const digits = Math.floor(Math.random() * (maxDigits - minDigits + 1)) + minDigits;
+        const min = Math.pow(10, digits - 1);
+        const max = Math.pow(10, digits) - 1;
+        return Math.floor(Math.random() * (max - min + 1)) + min;
+    }
+
+    function generateQuestion() {
+        const ops = Array.from(document.querySelectorAll('.op-group input:checked')).map(cb => cb.value);
+        if (ops.length === 0) {
+            alert("請至少選擇一種運算類型！");
+            return null;
+        }
+        const operator = ops[Math.floor(Math.random() * ops.length)];
+        
+        const n1Min = parseInt(document.getElementById('n1-min-digits').value);
+        const n1Max = parseInt(document.getElementById('n1-max-digits').value);
+        const n2Min = parseInt(document.getElementById('n2-min-digits').value);
+        const n2Max = parseInt(document.getElementById('n2-max-digits').value);
+        
+        let n1 = getRandomNumberByDigits(n1Min, n1Max);
+        let n2 = getRandomNumberByDigits(n2Min, n2Max);
+        let answer, text;
+
+        switch (operator) {
+            case '+':
+                answer = n1 + n2;
+                text = `${n1} + ${n2} = ?`;
+                break;
+            case '-':
+                if (n1 < n2) [n1, n2] = [n2, n1];
+                answer = n1 - n2;
+                text = `${n1} - ${n2} = ?`;
+                break;
+            case '*':
+                answer = n1 * n2;
+                text = `${n1} × ${n2} = ?`;
+                break;
+            case '/':
+                n2 = getRandomNumberByDigits(n2Min, n2Max);
+                if (n2 === 0) n2 = 1;
+                const tempAnswer = getRandomNumberByDigits(n1Min, n1Max);
+                n1 = n2 * tempAnswer;
+                answer = tempAnswer;
+                text = `${n1} ÷ ${n2} = ?`;
+                break;
+        }
+        return { text, answer };
+    }
+
+    function newQuestion() {
+        if (questionsAnswered >= totalQuestions) {
+            showSummary();
+            return;
+        }
+        currentQuestion = generateQuestion();
+        if (!currentQuestion) {
+            gameState = 'settings';
+            settingsControls.style.display = 'flex';
+            gameArea.style.display = 'none';
+            return;
+        }
+        
+        questionsAnswered++;
+        userAnswerInput.value = '';
+        userAnswerInput.disabled = false;
+        userAnswerInput.focus();
+        // [FIX] 修正語音報讀，避免重複 "等於"
+        speak(currentQuestion.text.replace(' = ?', ' 等於多少').replace('×', '乘以').replace('÷', '除以'));
+        startTimer();
+    }
+
+    function checkAnswer(isTimeout = false) {
+        cancelAnimationFrame(animationFrameId);
+        clearTimeout(timerId);
+        userAnswerInput.disabled = true;
+        gameState = 'feedback';
+
+        const userAnswer = parseInt(userAnswerInput.value);
+        const isCorrect = !isTimeout && userAnswer === currentQuestion.answer;
+        
+        if (isCorrect) {
+            score++;
+            playSound('correct');
+            createConfetti(canvas.width / 2, 0);
+        } else {
+            playSound('incorrect');
+        }
+
+        results.push({
+            qText: currentQuestion.text,
+            userAnswer: isNaN(userAnswer) ? '未作答' : userAnswer,
+            answer: currentQuestion.answer,
+            correct: isCorrect
+        });
+
+        drawFeedback(isCorrect, isTimeout);
+    }
+
+    function startTimer() {
+        timeRemaining = timeLimit;
+        const startTime = Date.now();
+        
+        function update() {
+            const elapsedTime = (Date.now() - startTime) / 1000;
+            timeRemaining = Math.max(0, timeLimit - elapsedTime);
+            drawGame();
+            if (timeRemaining > 0 && gameState === 'playing') {
+                animationFrameId = requestAnimationFrame(update);
+            }
+        }
+        gameState = 'playing';
+        update();
+
+        timerId = setTimeout(() => {
+            if (gameState === 'playing') checkAnswer(true);
+        }, timeLimit * 1000);
+    }
+
+    // --- 繪圖函式 ---
+    function draw() {
+        ctx.fillStyle = '#2c2c2c';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        if (gameState === 'summary') {
+            drawSummary();
+            return;
+        }
+
+        drawGame();
+        
+        if (gameState === 'feedback') {
+            drawFeedback(results[results.length - 1].correct, timeRemaining <= 0);
+        }
+
+        if (confettiParticles.length > 0) {
+            updateAndDrawConfetti();
+        }
+    }
+
+    function drawGame() {
+        ctx.fillStyle = '#2c2c2c';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.font = `bold 24px 'Microsoft JhengHei'`;
+        ctx.fillStyle = '#e0e0e0';
+        ctx.textAlign = 'left';
+        ctx.fillText(`得分: ${score}`, 20, 40);
+        ctx.textAlign = 'right';
+        ctx.fillText(`題目: ${questionsAnswered} / ${totalQuestions}`, canvas.width - 20, 40);
+        
+        ctx.font = `bold 80px Arial`;
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText(currentQuestion.text || "", canvas.width / 2, 150);
+        
+        if (gameState === 'playing') {
+            const barWidth = canvas.width - 80;
+            const remainingWidth = barWidth * (timeRemaining / timeLimit);
+            ctx.fillStyle = '#444';
+            ctx.fillRect(40, 220, barWidth, 20);
+            ctx.fillStyle = '#03dac6';
+            ctx.fillRect(40, 220, remainingWidth, 20);
+        }
+    }
+
+    function drawFeedback(isCorrect, isTimeout) {
+        if (isCorrect) {
+            ctx.font = `bold 48px 'Microsoft JhengHei'`;
+            ctx.fillStyle = '#2ecc71';
+            ctx.textAlign = 'center';
+            ctx.fillText('你好棒！', canvas.width / 2, 150);
+        } else {
+            ctx.strokeStyle = '#e74c3c';
+            ctx.lineWidth = 20;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(canvas.width/2 - 50, 100);
+            ctx.lineTo(canvas.width/2 + 50, 200);
+            ctx.moveTo(canvas.width/2 + 50, 100);
+            ctx.lineTo(canvas.width/2 - 50, 200);
+            ctx.stroke();
+            
+            ctx.font = `bold 36px 'Microsoft JhengHei'`;
+            // [FIX] 將正確答案的文字顏色改為紅色
+            ctx.fillStyle = '#e74c3c';
+            ctx.textAlign = 'center';
+            ctx.fillText(`正確答案: ${currentQuestion.answer}`, canvas.width / 2, 80);
+        }
+        
+        ctx.fillStyle = '#00796b';
+        ctx.fillRect(canvas.width / 2 - 75, 240, 150, 50);
+        ctx.font = `bold 24px 'Microsoft JhengHei'`;
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText('下一題', canvas.width / 2, 272);
+    }
+    
+    function createConfetti(x, y) {
+        for (let i = 0; i < 100; i++) {
+            confettiParticles.push({
+                x: x, y: y,
+                vx: (Math.random() - 0.5) * 15, vy: Math.random() * 10 + 5,
+                color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+                size: Math.random() * 8 + 4, life: 120
+            });
+        }
+    }
+
+    function updateAndDrawConfetti() {
+        const gravity = 0.2;
+        for (let i = confettiParticles.length - 1; i >= 0; i--) {
+            const p = confettiParticles[i];
+            p.vy += gravity; p.x += p.vx; p.y += p.vy; p.life--;
+            if (p.life <= 0) {
+                confettiParticles.splice(i, 1);
+            } else {
+                ctx.fillStyle = p.color;
+                ctx.globalAlpha = p.life / 120;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+                ctx.globalAlpha = 1.0;
+            }
+        }
+        if (confettiParticles.length > 0) {
+            requestAnimationFrame(draw);
+        }
+    }
+
+    function drawSummary() {
+        ctx.fillStyle = '#2c2c2c';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const accuracy = totalQuestions > 0 ? (score / totalQuestions * 100).toFixed(0) : 0;
+        ctx.font = `bold 32px 'Microsoft JhengHei'`;
+        ctx.fillStyle = '#e0e0e0';
+        ctx.textAlign = 'center';
+        ctx.fillText('測驗結果分析', canvas.width / 2, 50);
+        
+        ctx.font = `bold 24px 'Microsoft JhengHei'`;
+        ctx.fillText(`得分: ${score}/${totalQuestions}  正確率: ${accuracy}%`, canvas.width / 2, 90);
+
+        const incorrect = results.filter(r => !r.correct);
+        if (incorrect.length > 0) {
+            ctx.font = `bold 20px 'Microsoft JhengHei'`;
+            ctx.fillStyle = '#cf6679';
+            ctx.textAlign = 'left';
+            ctx.fillText('錯誤題目回顧：', 40, 130);
+            
+            ctx.font = `18px Arial`;
+            ctx.fillStyle = '#e0e0e0';
+            incorrect.forEach((r, i) => {
+                const text = `${r.qText.replace('?', r.answer)} (你的答案: ${r.userAnswer})`;
+                ctx.fillText(text, 50, 160 + i * 25);
+            });
+        } else {
+             ctx.font = `bold 24px 'Microsoft JhengHei'`;
+             ctx.fillStyle = '#2ecc71';
+             ctx.fillText('太棒了，全部正確！', canvas.width / 2, 180);
+        }
+
+        ctx.fillStyle = '#6200ee';
+        ctx.fillRect(canvas.width / 2 - 75, canvas.height - 70, 150, 50);
+        ctx.font = `bold 24px 'Microsoft JhengHei'`;
+        ctx.fillStyle = '#fff';
+        ctx.textAlign = 'center';
+        ctx.fillText('重新開始', canvas.width / 2, canvas.height - 38);
+    }
+
+    // --- 事件監聽 ---
+    startBtn.addEventListener('click', () => {
+        initAudioContext();
+        totalQuestions = parseInt(document.getElementById('num-questions').value);
+        timeLimit = parseInt(document.getElementById('time-limit').value);
+        
+        const ops = Array.from(document.querySelectorAll('.op-group input:checked'));
+        if (ops.length === 0) {
+            alert("請至少選擇一種運算類型！");
+            return;
+        }
+
+        score = 0;
+        questionsAnswered = 0;
+        results = [];
+        gameState = 'playing';
+        settingsControls.style.display = 'none';
+        gameArea.style.display = 'block';
+        newQuestion();
+    });
+
+    userAnswerInput.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            if (gameState === 'playing') {
+                checkAnswer();
+            }
+        }
+    });
+    
+    canvas.addEventListener('click', e => {
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const mouseX = (e.clientX - rect.left) * scaleX;
+        const mouseY = (e.clientY - rect.top) * scaleY;
+
+        if (gameState === 'feedback') {
+            if (mouseX > canvas.width/2 - 75 && mouseX < canvas.width/2 + 75 && mouseY > 240 && mouseY < 290) {
+                newQuestion();
+            }
+        } else if (gameState === 'summary') {
+            if (mouseX > canvas.width/2 - 75 && mouseX < canvas.width/2 + 75 && mouseY > canvas.height - 70 && mouseY < canvas.height - 20) {
+                gameState = 'settings';
+                settingsControls.style.display = 'flex';
+                gameArea.style.display = 'none';
+            }
+        }
+    });
+
+    window.onload = () => {
+        settingsControls.style.display = 'flex';
+        gameArea.style.display = 'none';
+        draw();
+    };
+</script>
+
+</body>
+</html>
